@@ -1,0 +1,71 @@
+{
+  "sizes": [
+    {
+      "chatHeight": 529,
+      "composerBottom": 800,
+      "documentHeight": 800,
+      "documentWidth": 320,
+      "height": 800,
+      "settingsDisplay": "none",
+      "width": 320
+    },
+    {
+      "chatHeight": 572,
+      "composerBottom": 844,
+      "documentHeight": 844,
+      "documentWidth": 390,
+      "height": 844,
+      "settingsDisplay": "none",
+      "width": 390
+    },
+    {
+      "chatHeight": 716,
+      "composerBottom": 1024,
+      "documentHeight": 1024,
+      "documentWidth": 768,
+      "height": 1024,
+      "settingsDisplay": "flex",
+      "width": 768
+    },
+    {
+      "chatHeight": 412,
+      "composerBottom": 720,
+      "documentHeight": 720,
+      "documentWidth": 1280,
+      "height": 720,
+      "settingsDisplay": "flex",
+      "width": 1280
+    },
+    {
+      "chatHeight": 188,
+      "composerBottom": 390,
+      "documentHeight": 390,
+      "documentWidth": 844,
+      "height": 390,
+      "settingsDisplay": "flex",
+      "width": 844
+    },
+    {
+      "chatHeight": 167,
+      "composerBottom": 360,
+      "documentHeight": 360,
+      "documentWidth": 390,
+      "height": 360,
+      "settingsDisplay": "none",
+      "width": 390
+    }
+  ],
+  "wideContent": {
+    "viewportWidth": 390,
+    "cardWidth": 370,
+    "tableViewportWidth": 342,
+    "tableScrollWidth": 601,
+    "codeViewportWidth": 342,
+    "codeScrollWidth": 1045
+  },
+  "checks": [
+    "settings_expand_and_collapse",
+    "composer_focus_collapses_mobile_settings",
+    "model_config_scrolls_without_hiding_composer"
+  ]
+}

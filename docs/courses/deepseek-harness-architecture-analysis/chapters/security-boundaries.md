@@ -1,0 +1,95 @@
+# DeepSeek Harness：审批、权限、沙箱和凭据是怎么配合的？
+
+![DeepSeek Harness：审批、权限、沙箱和凭据是怎么配合的？](https://www.begincode.net/img/640/uploads/courses/deepseek-harness-architecture-analysis/2026/10/f203b7f4a03e46229dfc55f75f0d2083.png)
+
+Agent 要执行一条命令时，界面可能弹出确认；命令真正启动后，又可能因为不能写某个目录而失败。调用模型或搜索服务时，它还要带上 API Key，但这个 Key 不应该出现在配置页面、对话记录和模型消息里。
+
+这些问题经常被统称为“权限”。放到运行时里，它们其实不是一回事：谁决定要不要询问用户，谁限制进程能写哪里，谁保管访问外部服务的秘密，处理的是不同风险。
+
+DeepSeek Harness 没有用一个万能的 Permission 模块把它们包起来。它保留了四个职责不同的部分：Permission Preset 负责切换一组策略，Approval 负责回答某一次操作能不能继续，Sandbox 负责约束真实执行，Credentials 负责在操作发生前提供凭据。
+
+它们会在同一次操作中配合，但不能互相替代。
+
+## Permission Preset 只是把两个策略放进一个选项
+
+界面里的权限选择看起来像一个开关，源码里却不是一条统一权限规则。
+
+[`PermissionPresetService`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/interaction/permission-presets/src/index.ts#L300-L418)把两个独立的值组合成具名预设：一个是 `sandbox/mode`，另一个是 `approval/policy`。默认配置提供的 `workspace-write`，对应 `workspace-write + ask`；`danger-full-access` 对应 `danger-full-access + never`。
+
+这里的 `never` 很容易被读错。它不是“永远不允许执行”，而是“永远不要发起审批”。当沙箱已经是 `danger-full-access` 时，操作不需要再通过审批申请扩大范围，因此组合成 `never`。如果某个操作仍然主动请求审批，服务会直接拒绝。
+
+切换预设时，[`apply()`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/interaction/permission-presets/src/index.ts#L403-L418)会先记录 `permission/preset`，再分别调用沙箱模式和审批策略各自的 setter。只有值确实变化时，对应事件才会写入 Session。
+
+这也说明 Permission Preset 的职责边界：它提供一个方便选择和恢复的组合身份，真正的执行规则仍然由 Approval 与 Sandbox 各自负责。如果两个底层值被单独改成了目录里没有的组合，当前预设会显示为派生出来的 `custom`，而不是强行把它归入某个已有选项。
+
+## Approval 决定的是这一问，不是整个会话的权限
+
+Approval Service 接收的是一个具体请求：哪个 Agent、哪个工具、哪次 Tool Call、为什么需要放行。返回值只有 `allowed-once`、`rejected`、`cancelled` 和 `unavailable`。
+
+真正代表授权的只有 `allowed-once`。它的含义也很窄：允许刚刚询问的那一次操作，不会给后续调用留下一个长期通行证。
+
+审批策略决定请求怎样被处理。`ask` 会把问题交给 `approval/request` 的应答链，Web UI、ACP 等入口可以在这里接入自己的回答方式。`never` 则在服务内部直接返回 `rejected`，不会先把问题发给界面。这个判断写在 [`ApprovalService.decide()`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/interaction/user-approval/src/index.ts#L267-L307)里，所以后注册的监听器也绕不过去。
+
+没有应答者、应答者抛错、返回了约定之外的值，结果都会收敛成 `unavailable`。调用方只接受 `allowed-once`，其余结果全部拒绝。这是一条很明确的失败关闭路径：交互渠道坏了，不会自动把操作放过去。
+
+每次请求还会在同一个开放 Turn 内写入 `approval/asked` 和 `approval/decided`。[`request()`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/interaction/user-approval/src/index.ts#L215-L234)甚至拒绝在 Turn 之外发起审批，因为缺少完整事件对的尾部记录，在重载时无法作为可靠事实恢复。
+
+Approval 因而不只是一个弹窗接口。它把一次性决定、交互路由和可回放记录放在同一个边界里。
+
+## 一次提权怎样从审批走到沙箱
+
+`bash` 能把这几个模块的协作关系展示得很清楚。
+
+工具调用开始时，Bash Tool 先读取当前 Session 的沙箱策略。普通调用直接使用这个策略执行；只有参数里带了 `sandbox_permissions` 和 `justification`，它才进入提权路径。
+
+公共的 [`approveEscalation()`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sandbox/sandbox/src/escalation.ts#L171-L208)先检查目标模式是否真的比当前模式更宽。相同模式不会重复询问，收窄权限也不能伪装成提权。目标确实更宽时，它才通过 Approval Service 发出请求，并把目标模式与理由写进审批内容。
+
+用户给出 `allowed-once` 后，返回的是这次调用可以使用的目标 `SandboxMode`。Bash Tool 把它放进本次 `ShellExecRequest`，并没有修改 Session 的长期模式。[工具执行代码](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/shell/tool-bash/src/index.ts#L478-L531)下一次运行时仍然从 Session 的常驻策略重新开始。
+
+所以一次提权不是“用户确认后关闭沙箱”。更准确的过程是：当前策略不够，工具申请一个严格更宽的模式；Approval 只批准这次申请；Sandbox 仍然按照批准后的模式执行。
+
+![DeepSeek Harness 审批、沙箱与凭据协作关系](https://www.begincode.net/img/640/uploads/courses/deepseek-harness-architecture-analysis/2026/10/94474998028e4745816a318ab2ecbff7.png)
+
+## Sandbox 约束的是执行结果能碰到哪里
+
+Approval 回答“这次是否允许扩大范围”，但它本身挡不住进程写文件。实际限制落在 Sandbox。
+
+Harness 的 `SandboxMode` 有 `read-only`、`workspace-write` 和 `danger-full-access`。当前定义只覆盖文件系统效果，不承诺隔离网络访问，也不承诺隐藏其他进程。这一点在[沙箱子系统说明](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/sandbox.zh.md#%E6%A8%A1%E5%BC%8F%E4%B8%8E%E5%BC%BA%E5%88%B6%E6%89%A7%E8%A1%8C)里写得很直接。
+
+策略不是进程启动时固定一份，而是按能力调用解析。[`SandboxPolicyService.resolve()`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sandbox/sandbox-policy/src/index.ts#L164-L171)按“本次已批准模式、Session 覆盖值、部署默认值”的顺序取模式，同时把 Session 的工作目录变成 `workspaceRoot`。这让两个 Session 即使并发执行，也能使用不同的写入边界。
+
+在受限模式下，Sandbox Provider 把原始 argv 包装成平台对应的执行命令。Linux 可以使用 bwrap 或 Landlock，macOS 使用 Seatbelt，Windows 使用 ACL 受限令牌。`danger-full-access` 则由消费方直接执行原始 argv，不再假装有一层隔离。
+
+后端还要报告 `full` 或 `partial`。`full` 表示当前后端能覆盖该模式承诺的文件效果；`partial` 表示只能覆盖其中一部分。比如较旧的 Landlock ABI 和 Windows ACL 的某些边界就可能只能给出部分强制。这个状态会随执行结果向上传递，不能因为“已经启用沙箱”就一律当成完整隔离。
+
+更重要的是，受限模式找不到可用后端时会报 `SANDBOX_UNAVAILABLE`，不会静默退化成无隔离执行。[`SandboxBashExecutor.execute()`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/shell/bash-sandbox/src/index.ts#L89-L133)还区分“runner 自己没启动成功”和“runner 正常工作并拒绝了文件操作”。前者是沙箱基础设施故障，后者才是策略生效后的拒绝。
+
+## Credentials 管秘密从哪里来，不决定操作能不能做
+
+凭据系统处理的是另一类问题。API Key、访问令牌和登录授权不是执行权限，也不应该塞进普通配置。
+
+Harness 的配置保存 `CredentialRef`，通常就是 `DEEPSEEK_API_KEY` 这样的环境变量名。真实值由 Credential Provider 管理。配置界面调用 `describe()` 时只能得到是否已配置、来源和能否写入，类型里根本没有返回秘密值的位置。
+
+需要调用外部服务的消费方在每次操作前调用 `resolve(ref)`。默认本地提供方按“存储文件、启动环境、`.env` 后备”的顺序查找，[`LocalCredentialProvider.resolve()`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/credentials/credentials-local/src/index.ts#L624-L632)返回当前值和来源。它不会跨操作缓存，因此密钥轮换后，下一次请求就会重新取得新值。
+
+DeepSeek LLM 适配器就是这样使用凭据的。[`resolveApiKey()`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm-deepseek-api-key/src/index.ts#L20-L35)在发起模型请求前解析引用，缺少凭据就抛出 `MISSING_CREDENTIAL`。Key 用在适配器的请求认证里，不需要进入模型消息、Session transcript 或可读配置。
+
+这条边界同样不能被夸大。Credentials 负责存储、描述和按操作解析秘密，不负责判断一个工具是否有权执行，也不负责限制进程读写。工具是否能运行看它自己的调用路径；进程能写哪里看 Sandbox；需要扩大范围时才交给 Approval。
+
+## 四层配合，靠的是各自失败方式不同
+
+用三个实际路径看，会比把四个模块画成一把“大锁”更清楚。
+
+在 `workspace-write` 预设下执行普通命令，Permission Preset 已经把 Session 设置成 `workspace-write + ask`。命令没有申请提权，就不会为了“走流程”强制弹出审批；Shell 按当前策略交给 Sandbox，写工作区之外的动作由执行边界拒绝。
+
+同一条命令如果申请 `danger-full-access`，工具先验证这是严格扩权，再向 Approval 请求一次性决定。批准后，新模式只进入这次执行，Sandbox 根据它决定是否绕过约束。审批渠道缺失、用户拒绝或请求取消，命令都不会获得更宽模式。
+
+调用模型时走的是另一条路。LLM Adapter 在请求发生前从 Credentials 解析 API Key，再把它用于远端认证。这条路径不因为持有 Key 就获得文件写权限，也不需要把 Key 交给模型来“自己调用”。
+
+这种拆分带来的好处，是每层都能对自己负责的风险给出明确结果：Preset 能恢复用户选择，Approval 能记录某次决定，Sandbox 能报告完整或部分强制，Credentials 能说明来源却不返回值。代价也很实际：排查失败时，不能只看一个“权限状态”，而要判断问题发生在策略选择、审批应答、沙箱后端还是凭据解析。
+
+DeepSeek Harness 的做法不是把安全集中到一个入口，而是让决定与执行分开，让秘密与配置分开，再用一次调用把它们组合起来。理解了这些边界，很多看似矛盾的行为也就说得通了：`never` 不等于禁止执行，用户批准不等于关闭沙箱，有 API Key 也不等于拥有工具权限。
+
+---
+
+[返回课程目录](https://www.begincode.net/courses/deepseek-harness-architecture-analysis) · [上一章](https://www.begincode.net/courses/deepseek-harness-architecture-analysis/chapters/runtime-hosts)

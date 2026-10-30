@@ -1,0 +1,3 @@
+function renderOverview(){$('#quick-agents').innerHTML=agents.slice(0,3).map(a=>`<div class="quick-item"><div><b>${escapeHtml(a.name)}</b><span>${a.type==='supervisor'?'主 Agent · '+a.subs.length+'个 SubAgent':'普通 Agent · '+a.model}</span></div><button class="link" data-quick-code="${escapeHtml(a.code)}">打开</button></div>`).join('');$$('[data-quick-code]').forEach(b=>b.onclick=()=>openAgent(b.dataset.quickCode));$('#recent-runs').innerHTML=runs.map(r=>`<div class="run-item"><div><b>${r.title}</b><span>${r.agent}</span></div><span>${r.status}</span><span>${r.time}</span></div>`).join('')}
+$('#stat-agents').textContent=agents.length;
+renderOverview();

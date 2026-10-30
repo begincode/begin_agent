@@ -1,0 +1,160 @@
+# DeepSeek Harness 架构设计：模型输出之后，Agent Runtime 如何工作
+
+大模型已经很会回答问题了。
+
+但模型开始改文件、执行命令、调用外部服务以后，光有一个正确答案还不够。
+
+模型返回 Tool Call，只是说出了想调用哪个工具、传入什么参数。接下来还有一串工作：检查这个调用能不能执行，运行工具，保存结果，处理取消，再决定是否继续请求模型。
+
+这些工作都发生在模型输出之后。DeepSeek Harness 的主要作用，就是把它们组织成一个可以持续运行的过程。
+
+## 当模型开始调用工具，Runtime 还要处理什么
+
+一个最简单的 Agent Loop，大概是这样：
+
+```text
+请求模型
+→ 执行模型返回的工具调用
+→ 把工具结果交还模型
+→ 继续请求模型
+```
+
+这个循环进入实际任务以后，问题很快就会出现。
+
+用户在工具执行期间又发来一条消息，这条消息要不要影响当前任务？多个工具同时运行，结果按照完成顺序还是模型发起的顺序写入？取消发生在模型已经输出一半的时候，前面的内容是否保留？进程重启以后，系统怎样知道上一次执行到了哪里？
+
+DeepSeek Harness 把这些工作分给了不同模块：
+
+![DeepSeek Harness 运行时架构：模型负责决策，Runtime 负责接收输入、执行工具和保存结果](https://www.begincode.net/img/640/uploads/courses/deepseek-harness-architecture-analysis/2026/10/1ff3290661ec4fd6a06698393ee4b260.png)
+
+- Agent Loop 推进 Turn 和 Step，并决定继续还是停止；
+- Inbox 保存已经收到、但还没有处理的消息；
+- LLM Adapter 负责调用模型；
+- Tools Runtime 检查并执行工具调用；
+- Session 记录消息、工具调用、工具结果和运行状态；
+- Cordis 通过 Context、Event 和 Scope 把这些模块组织起来。
+
+模型负责提出下一步。Harness 负责把这一步执行完，并把执行结果交给下一次模型请求。
+
+## Agent Loop 的核心，是控制任务怎样向前推进
+
+DeepSeek Harness 把一次任务分成 Turn 和 Step。
+
+Turn 表示一轮完整任务。Step 表示其中的一次模型请求，以及这次请求产生的工具调用。
+
+例如，模型先搜索代码，再修改文件，然后运行测试。用户看到的是同一个任务，Agent Loop 内部已经执行了多个 Step。只要当前 Turn 还没有结束，工具结果就会继续进入下一次模型请求。
+
+Turn 和 Step 不是单纯的代码分层。它们明确了任务在哪些节点可以接收新输入、继续执行或者结束。
+
+运行中收到的新消息会先进入 Inbox。三种接口决定了消息从哪个节点开始生效：
+
+| 接口 | 消息放到哪里 | 实际效果 |
+|---|---|---|
+| `followup` | `next-turn` | 当前 Turn 结束后，开始新的 Turn |
+| `steer` | `next-step` | 当前 Turn 的下一个 Step 使用这条消息，并唤醒 Agent |
+| `inject` | `next-step` | 为后续 Step 补充消息，但不主动唤醒 Agent |
+
+消息被接收以后，不会直接插入正在进行的模型请求。[`agent.ts`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/agent-loop/src/agent.ts) 中的 `turn()`、`step()` 和两级 Inbox 决定了它会在哪一次请求里出现。
+
+Agent Loop 也负责判断任务什么时候停下来。
+
+模型没有返回 Tool Call，只能说明当前 Step 没有工具需要执行。Turn 结束前，Agent Loop 还会检查 `next-step`，并触发 `agent/turn-stopping`。如果这时出现新的 Steering，任务会继续执行。Turn 关闭以后，Loop 还会检查 `next-turn`；存在 Followup 时，会直接开始下一轮。
+
+Agent Loop 会重复调用模型，也会决定下一次请求什么时候开始、带上哪些消息，以及当前任务是否已经结束。
+
+## Session 记录的不只是对话，还有 Agent 的运行过程
+
+聊天应用通常保存用户消息和模型回复。Agent 还需要记录更多内容。
+
+一次任务可能经历多次模型请求、工具调用、失败重试和用户取消。这些内容不一定都展示在聊天界面里，却会影响任务恢复以后怎样继续。
+
+DeepSeek Harness 会把运行过程写成不同事件，例如：
+
+```text
+turn/start        turn/end
+step/start        step/end
+assistant/message assistant/attempt
+tool/call         tool/result
+```
+
+这些事件的类型定义在 [`session/src/types.ts`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/session/src/types.ts) 中。
+
+下一次请求模型时，Runtime 从 Session 记录中生成模型需要的上下文。界面要展示对话时，也从这些记录中挑选用户需要看到的内容。工具调用记录和 Agent 当前状态，同样可以从 Session 中还原。
+
+失败和取消也会留下记录。模型请求失败但没有形成正式回复时，可以写入 `assistant/attempt`；已经产生部分输出后被取消时，可以保存带有 `interrupted: true` 的 `assistant/message`。
+
+Inbox 也不是只放在内存里的数组。[`ReactLoopInbox`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/agent-loop/src/inbox.ts) 会把队列变化写成 `agent/inbox/spliced` 事件，再通过 Projection 重新生成 `next-turn` 和 `next-step`。
+
+这样做增加了事件定义和 Projection 的维护成本，但解决了一个实际问题：进程重启以后，系统不仅能恢复已经完成的对话，也能找回尚未处理的消息和中断前的执行记录。
+
+## 模型提出工具调用，Tools Runtime 负责执行和控制
+
+模型返回 Tool Call 后，DeepSeek Harness 不会直接调用对应函数。
+
+当前实现会依次经过执行前处理、Guard、工具执行、执行后处理和结果固定。这些步骤都由 [`Tools Runtime`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/tools/src/index.ts) 统一处理。
+
+```text
+模型返回 Tool Call
+→ 执行前判断是否允许、拒绝、取消或请求确认
+→ Guard 检查是否必须拒绝
+→ 执行工具
+→ 检查并整理工具结果
+→ 把最终结果写入 Session
+```
+
+这里处理的不是普通文本。写文件、执行命令和调用外部 API，都会改变 Agent 之外的状态。Tools Runtime 把这些操作集中到同一个执行过程里，模型不能跳过检查直接运行工具。
+
+Guard 的设计也很明确：它可以拒绝调用，但不能把已经被拒绝的调用重新改成允许。多个插件参与判断时，后面的检查只能继续限制，不能放宽前面的决定。
+
+工具返回结果后，Runtime 还会检查结果是否符合工具声明的 Output Schema，并生成下一次模型请求可以使用的内容。工具函数返回了数据，不代表这些数据会原样进入模型上下文。
+
+### 工具可以并行执行，结果仍按模型给出的顺序写入
+
+一次模型响应可能包含多个 Tool Call。[`tool-calls.ts`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/agent-loop/src/tool-calls.ts) 支持两种执行方式：`parallel` 工具可以并行运行，`exclusive` 工具需要独占执行。
+
+并行工具通过受限的滚动池运行，并发数量由 `maxParallelToolCalls` 控制。工具完成的先后顺序可能每次都不一样，但结果仍按照模型给出的 Tool Call 顺序写入 Session。
+
+否则，同一组工具只因为网络速度不同，就可能给下一次模型请求生成不同顺序的上下文。Harness 允许工具并行运行，但不会让完成速度改变 Session 中的记录顺序。
+
+## Cordis 负责提供依赖、传递事件和管理模块生命周期
+
+DeepSeek Harness 把模型、工具、Session 和 Agent Loop 都做成了可以替换的能力。默认的 `ReactLoopAgent` 不负责创建这些模块，而是从 Context 中获取：
+
+```text
+loopCtx.llm
+loopCtx.tools
+loopCtx.systemPrompt
+loopCtx.sessionProjections
+loopCtx.agents
+```
+
+Context 让 Agent 找到所需能力。Event 让插件观察或修改运行过程。Scope 则记录一项能力属于整个 Host，还是只属于某个 Agent；Agent 的 Scope 被销毁时，注册在这个 Scope 里的能力也会一起退出。
+
+官方用 “Everything is a Plugin” 描述这套架构。它带来的直接结果是：模型适配、工具实现、Session 存储和 Agent Loop 都可以替换，不需要把所有逻辑改进同一个主循环。
+
+代价也很具体。插件增多以后，依赖来自哪个 Context、事件按什么顺序执行、能力在哪个 Scope 中生效，都会增加排查成本。Cordis 提供了统一的组合方式，但插件之间的关系仍然需要开发者管理。
+
+## 从模型输出到下一次请求，Harness 做了哪些工作
+
+回到一次完整的工具调用，DeepSeek Harness 处理的过程大致是：
+
+```text
+模型返回 Tool Call
+→ Agent Loop 收到调用请求
+→ Tools Runtime 检查并执行工具
+→ Session 记录 Tool Call 和 Tool Result
+→ Agent Loop 生成下一次模型请求
+→ 没有后续工具调用时，检查 Inbox 并结束 Turn
+```
+
+这套代码没有提高模型的推理能力。它解决的是另一类问题：新消息从哪一步生效，工具调用由谁执行，运行记录保存在哪里，取消以后怎样结束，下一次模型请求怎样接着运行。
+
+模型可以提出要做什么。
+
+Agent Runtime 要保证这次操作能够被检查、执行、记录，并在完成后继续下一步。
+
+经过检查、执行、记录并进入下一步以后，模型给出的决定才成为系统中可以继续追踪的行为。
+
+---
+
+[返回课程目录](https://www.begincode.net/courses/deepseek-harness-architecture-analysis) · [下一章](https://www.begincode.net/courses/deepseek-harness-architecture-analysis/chapters/agent-assembly)

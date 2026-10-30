@@ -1,0 +1,161 @@
+{
+  "checked_at": "2026-10-23T17:23:19.793501+08:00",
+  "kind": "live_application_generation_controls",
+  "credential_source": "encrypted_database_profiles_via_application",
+  "results": [
+    {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "profile_code": "mdl_01M5M0CQE88MF334GYDEXGQBMB",
+      "checks": [
+        {
+          "thinking": "enabled",
+          "reasoning_effort": "low",
+          "streaming": true,
+          "content_events": 1,
+          "reasoning_events": 21,
+          "status": "PASSED",
+          "reasoning_characters": 82,
+          "usage": {
+            "prompt_tokens": 43,
+            "completion_tokens": 23,
+            "total_tokens": 66,
+            "cached_tokens": 0,
+            "reasoning_tokens": 21
+          },
+          "provider_request_id": "115f943c-b024-4736-b3d5-4dee4f354749"
+        },
+        {
+          "thinking": "enabled",
+          "reasoning_effort": "high",
+          "streaming": false,
+          "status": "PASSED",
+          "reasoning_characters": 121,
+          "usage": {
+            "prompt_tokens": 43,
+            "completion_tokens": 33,
+            "total_tokens": 76,
+            "cached_tokens": 0,
+            "reasoning_tokens": 31
+          },
+          "provider_request_id": "46cb5252-4123-4d4a-8ecb-bd57d2fbfd0e"
+        },
+        {
+          "thinking": "enabled",
+          "reasoning_effort": "max",
+          "streaming": true,
+          "content_events": 1,
+          "reasoning_events": 50,
+          "status": "PASSED",
+          "reasoning_characters": 164,
+          "usage": {
+            "prompt_tokens": 43,
+            "completion_tokens": 52,
+            "total_tokens": 95,
+            "cached_tokens": 0,
+            "reasoning_tokens": 50
+          },
+          "provider_request_id": "26fdda5d-dac4-427c-8b32-7de1ac992178"
+        },
+        {
+          "thinking": "disabled",
+          "reasoning_effort": null,
+          "streaming": false,
+          "status": "PASSED",
+          "reasoning_characters": 0,
+          "usage": {
+            "prompt_tokens": 17,
+            "completion_tokens": 1,
+            "total_tokens": 18,
+            "cached_tokens": 0
+          },
+          "provider_request_id": "4dc03401-aede-499b-8dbe-6efaebff1763"
+        },
+        {
+          "thinking": "disabled",
+          "reasoning_effort": null,
+          "streaming": true,
+          "content_events": 1,
+          "reasoning_events": 0,
+          "status": "PASSED",
+          "reasoning_characters": 0,
+          "usage": {
+            "prompt_tokens": 17,
+            "completion_tokens": 1,
+            "total_tokens": 18,
+            "cached_tokens": 0
+          },
+          "provider_request_id": "abd5b075-e305-4643-b0ab-f882f4b072ce"
+        }
+      ],
+      "status": "PASSED"
+    },
+    {
+      "provider": "glm",
+      "model": "glm-5.3-flash",
+      "profile_code": "mdl_01M5M0P4XH9TQAMXMGD3K7ZP6E",
+      "checks": [
+        {
+          "thinking": "enabled",
+          "reasoning_effort": "low",
+          "streaming": true,
+          "content_events": 2,
+          "reasoning_events": 7,
+          "status": "PASSED",
+          "reasoning_characters": 11,
+          "usage": {
+            "prompt_tokens": 25,
+            "completion_tokens": 11,
+            "total_tokens": 36,
+            "cached_tokens": 0,
+            "reasoning_tokens": 7
+          },
+          "provider_request_id": "2026102317230254227efa7c874bb0"
+        },
+        {
+          "thinking": "enabled",
+          "reasoning_effort": "high",
+          "streaming": false,
+          "status": "PASSED",
+          "reasoning_characters": 127,
+          "usage": {
+            "completion_tokens": 42,
+            "prompt_tokens": 25,
+            "total_tokens": 67,
+            "cached_tokens": 0,
+            "reasoning_tokens": 38
+          },
+          "provider_request_id": "20261023172309d596fff6ce0241db"
+        },
+        {
+          "thinking": "enabled",
+          "reasoning_effort": "max",
+          "streaming": true,
+          "content_events": 2,
+          "reasoning_events": 119,
+          "status": "PASSED",
+          "reasoning_characters": 305,
+          "usage": {
+            "prompt_tokens": 25,
+            "completion_tokens": 123,
+            "total_tokens": 148,
+            "cached_tokens": 0,
+            "reasoning_tokens": 119
+          },
+          "provider_request_id": "20261023172313fb1a118bc4a347bb"
+        }
+      ],
+      "status": "PASSED"
+    },
+    {
+      "provider": "minimax",
+      "status": "BLOCKED",
+      "reason": "no_enabled_database_profile"
+    },
+    {
+      "provider": "kimi",
+      "status": "BLOCKED",
+      "reason": "no_enabled_database_profile"
+    }
+  ]
+}

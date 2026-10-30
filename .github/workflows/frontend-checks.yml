@@ -1,0 +1,41 @@
+name: Frontend checks
+
+on:
+  push:
+    paths:
+      - 'web/**'
+      - 'docs/frontend-standards.md'
+      - 'Makefile'
+      - '.github/workflows/frontend-checks.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'docs/frontend-standards.md'
+      - 'Makefile'
+      - '.github/workflows/frontend-checks.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run check

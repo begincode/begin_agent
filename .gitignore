@@ -1,0 +1,31 @@
+.DS_Store
+.env
+.data/
+.idea/
+.vscode/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.tsbuildinfo
+/dist/
+build/
+htmlcov/
+.coverage
+web/node_modules/
+web/dist/
+/app/static/
+
+
+# Local browser state and generated delivery artifacts
+/.playwright-cli/
+/output/
+**/.openai/
+
+# Local publishing receipts and generated upload payloads
+/docs/courses/**/responses/
+/docs/courses/**/publication-*.json
+/docs/courses/**/course.payload.json

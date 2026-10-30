@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>任务对话 · Agent 平台交互原型</title>
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/common.js" defer></script>
+<script src="assets/tasks.js" defer></script>
+</head>
+<body data-page="task-detail" class="task-focus">
+<div class="app">
+  <aside class="sidebar">
+    <button class="sidebar-toggle" id="sidebar-toggle" title="折叠侧边栏" aria-label="折叠侧边栏">‹</button>
+    <div class="brand"><div class="logo">A</div><div><b>Agent Platform</b><span>内部智能体平台</span></div></div>
+    <a class="tenant" title="进入租户管理" href="tenant.html"><small>当前租户</small><strong>研发效能中心</strong></a>
+    <div class="nav-group">
+      <div class="nav-label">工作台</div>
+      <a class="nav-btn" title="概览" aria-label="概览" href="index.html"><span class="nav-icon">▦</span><span>概览</span></a>
+      <a class="nav-btn active" aria-current="page" title="我的任务" aria-label="我的任务" href="tasks.html"><span class="nav-icon">☑</span><span>我的任务</span></a>
+      <a class="nav-btn" title="Agent" aria-label="Agent" href="agents.html"><span class="nav-icon">◈</span><span>Agent</span></a>
+      <a class="nav-btn" title="运行记录" aria-label="运行记录" href="runs.html"><span class="nav-icon">▷</span><span>运行记录</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">资源</div>
+      <a class="nav-btn" title="模型" aria-label="模型" href="models.html"><span class="nav-icon">⬡</span><span>模型</span></a>
+      <a class="nav-btn" title="工具" aria-label="工具" href="tools.html"><span class="nav-icon">⌘</span><span>工具</span></a>
+      <a class="nav-btn" title="MCP" aria-label="MCP" href="mcps.html"><span class="nav-icon">⇄</span><span>MCP</span></a>
+      <a class="nav-btn" title="Skill" aria-label="Skill" href="skills.html"><span class="nav-icon">✦</span><span>Skill</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">管理</div>
+      <a class="nav-btn" title="租户设置" aria-label="租户设置" href="tenant.html"><span class="nav-icon">⚙</span><span>租户设置</span></a>
+      <a class="nav-btn" title="成员管理" aria-label="成员管理" href="members.html"><span class="nav-icon">♙</span><span>成员管理</span></a>
+      <a class="nav-btn" title="角色权限" aria-label="角色权限" href="roles.html"><span class="nav-icon">⊕</span><span>角色权限</span></a>
+      <a class="nav-btn" title="用户管理" aria-label="用户管理" href="users.html"><span class="nav-icon">◎</span><span>用户管理</span></a>
+    </div>
+    <div class="sidebar-foot">多页面交互原型 v0.2<br>数据不会提交到服务端</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar"><div class="crumb" id="crumb">任务对话</div><div class="user"><a class="tenant-chip" href="tenant.html">研发效能中心</a><span class="prototype-tag">交互原型</span><div class="avatar">B</div><span>租户管理员</span></div></header>
+    <div class="content">
+<section class="view active" id="view-task-detail">
+
+        <div class="detail-head"><a class="back" href="tasks.html">←</a><div class="agent-mark">任</div><div class="detail-title"><h1 id="task-detail-title">分析本月销售下滑原因</h1><p id="task-detail-code">tsk_01JA4...</p></div><div class="detail-actions"><span id="task-detail-status" class="badge green">已完成</span><button class="btn" id="task-runtime-toggle"><span class="runtime-toggle-icon">◧</span><span id="task-runtime-toggle-text">隐藏执行链</span></button><button class="btn" id="task-retry">重新执行</button></div></div>
+        <div class="task-detail-grid" id="task-workspace"><div class="panel task-chat-panel"><div class="task-chat-head"><div><h3 id="task-chat-agent">持续对话</h3><small>任务上下文会在每轮对话中自动携带</small></div><div class="task-chat-head-meta"><span class="context-chip">上下文已开启</span><span id="task-turn-count">1 轮对话</span></div></div><div class="task-chat-body" id="task-chat-body"></div><div class="task-composer"><div class="task-input-wrap"><textarea id="task-followup-input" placeholder="继续补充要求、追问结果或让 Agent 调整输出…"></textarea><div class="task-input-hint">Enter 换行 · Ctrl/Command + Enter 发送</div></div><button class="btn primary" id="task-followup-send">发送</button></div></div><aside class="panel task-block task-runtime-panel"><h3>执行详情</h3><div class="sub">当前会话产生的 Agent Run</div><div class="runtime-summary"><div class="runtime-stat"><b id="runtime-turn-stat">1</b><span>对话轮次</span></div><div class="runtime-stat"><b id="runtime-run-stat">2</b><span>Run 数量</span></div><div class="runtime-stat"><b id="runtime-token-stat">8.4K</b><span>Token</span></div></div><div class="run-tree" id="task-run-tree"></div></aside></div>
+
+</section>
+</div></main></div>
+<div class="toast" id="toast" role="status"></div>
+</body></html>

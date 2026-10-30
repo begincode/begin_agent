@@ -1,0 +1,7 @@
+# PMS 外部配置示例；密钥与数据库连接由平台外部注入。
+AGENT_ENVIRONMENT: staging
+AGENT_AUTH_MODE: password
+AGENT_LOG_LEVEL: INFO
+# 首次打开页面设置管理员；不使用 SSO 登记或 SSO 密钥。
+# 补齐 AGENT_DATABASE_URL、AGENT_WORKER_DATABASE_URL 和持久化加密主密钥。
+AGENT_MCP_ALLOWED_HOSTS: []

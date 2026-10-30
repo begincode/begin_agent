@@ -1,0 +1,67 @@
+{
+  "checked_at": "2026-10-23T17:15:30.968077+08:00",
+  "kind": "live_provider_api",
+  "credential_source": "database",
+  "results": [
+    {
+      "provider": "glm",
+      "profile_code": "mdl_01M5M0P4XH9TQAMXMGD3K7ZP6E",
+      "model": "glm-5.3-flash",
+      "checks": [
+        {
+          "name": "text",
+          "status": "PASSED",
+          "finish_reason": "stop",
+          "usage": {
+            "completion_tokens": 111,
+            "prompt_tokens": 25,
+            "total_tokens": 136,
+            "cached_tokens": 0,
+            "reasoning_tokens": 108
+          },
+          "provider_request_id": "202610231715315533593a484541a5"
+        },
+        {
+          "name": "multi_turn_with_reasoning_replay",
+          "status": "PASSED",
+          "finish_reason": "stop",
+          "usage": {
+            "completion_tokens": 45,
+            "prompt_tokens": 149,
+            "total_tokens": 194,
+            "cached_tokens": 0,
+            "reasoning_tokens": 39
+          },
+          "provider_request_id": "20261023171536eb87c35aab3b4481"
+        },
+        {
+          "name": "stream",
+          "status": "PASSED",
+          "finish_reason": "stop",
+          "usage": {
+            "prompt_tokens": 17,
+            "completion_tokens": 248,
+            "total_tokens": 265,
+            "cached_tokens": 0,
+            "reasoning_tokens": 244
+          },
+          "provider_request_id": "202610231715381206019e444c4013"
+        },
+        {
+          "name": "tool_call_and_result_round_trip",
+          "status": "PASSED",
+          "finish_reason": "stop",
+          "usage": {
+            "completion_tokens": 21,
+            "prompt_tokens": 90,
+            "total_tokens": 111,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "provider_request_id": "2026102317155049628308f6af4fd8"
+        }
+      ],
+      "status": "PASSED"
+    }
+  ]
+}

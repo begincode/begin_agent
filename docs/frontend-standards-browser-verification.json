@@ -1,0 +1,218 @@
+[
+  {
+    "checkbox": {
+      "height": 16,
+      "width": 16
+    },
+    "composerBottom": 800,
+    "controls": [
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      }
+    ],
+    "documentHeight": 800,
+    "documentWidth": 320,
+    "height": 800,
+    "logoOffsetX": 0,
+    "logoOffsetY": 0,
+    "modelBottomDelta": 0,
+    "width": 320
+  },
+  {
+    "checkbox": {
+      "height": 16,
+      "width": 16
+    },
+    "composerBottom": 844,
+    "controls": [
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      }
+    ],
+    "documentHeight": 844,
+    "documentWidth": 390,
+    "height": 844,
+    "logoOffsetX": 0,
+    "logoOffsetY": 0,
+    "modelBottomDelta": 0,
+    "width": 390
+  },
+  {
+    "checkbox": {
+      "height": 16,
+      "width": 16
+    },
+    "composerBottom": 1024,
+    "controls": [
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      }
+    ],
+    "documentHeight": 1024,
+    "documentWidth": 768,
+    "height": 1024,
+    "logoOffsetX": 0,
+    "logoOffsetY": 0,
+    "modelBottomDelta": 0,
+    "width": 768
+  },
+  {
+    "checkbox": {
+      "height": 16,
+      "width": 16
+    },
+    "composerBottom": 720,
+    "controls": [
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      }
+    ],
+    "documentHeight": 720,
+    "documentWidth": 1280,
+    "height": 720,
+    "logoOffsetX": 0,
+    "logoOffsetY": 0,
+    "modelBottomDelta": 0,
+    "width": 1280
+  },
+  {
+    "checkbox": {
+      "height": 16,
+      "width": 16
+    },
+    "composerBottom": 390,
+    "controls": [
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      }
+    ],
+    "documentHeight": 390,
+    "documentWidth": 844,
+    "height": 390,
+    "logoOffsetX": 0,
+    "logoOffsetY": 0,
+    "modelBottomDelta": 0,
+    "width": 844
+  },
+  {
+    "checkbox": {
+      "height": 16,
+      "width": 16
+    },
+    "composerBottom": 360,
+    "controls": [
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      },
+      {
+        "height": 40,
+        "radius": "8px"
+      }
+    ],
+    "documentHeight": 360,
+    "documentWidth": 390,
+    "height": 360,
+    "logoOffsetX": 0,
+    "logoOffsetY": 0,
+    "modelBottomDelta": 0,
+    "width": 390
+  }
+]

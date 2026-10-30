@@ -1,0 +1,18 @@
+{
+  "environment": {
+    "python": "3.14.6",
+    "postgresql": "17.9"
+  },
+  "checks": [
+    "legacy profile tenant backfill preserves ciphertext",
+    "upgrade, downgrade to original version, re-upgrade succeeded",
+    "alembic metadata schema comparison clean",
+    "artifact imports its own source from release directory",
+    "CLI port 18031 overrides config 19999; root_path /, HTML base and JS served",
+    "CLI port 18032 overrides config 19999; root_path /agent, HTML base and JS served",
+    "same encrypted credentials decrypt after switching release directory",
+    "non-superuser BYPASSRLS worker starts and reports real readiness",
+    "SIGTERM shutdown clears readiness; logs and key remain outside releases"
+  ],
+  "result": "passed"
+}

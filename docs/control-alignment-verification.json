@@ -1,0 +1,82 @@
+[
+  {
+    "controls": [
+      {
+        "bottom": 140,
+        "height": 40
+      },
+      {
+        "bottom": 140,
+        "height": 40
+      },
+      {
+        "bottom": 140,
+        "height": 40
+      }
+    ],
+    "documentWidth": 1280,
+    "logoCenterOffsetX": 0,
+    "logoCenterOffsetY": 0,
+    "width": 1280
+  },
+  {
+    "controls": [
+      {
+        "bottom": 140,
+        "height": 40
+      },
+      {
+        "bottom": 140,
+        "height": 40
+      },
+      {
+        "bottom": 140,
+        "height": 40
+      }
+    ],
+    "documentWidth": 768,
+    "logoCenterOffsetX": 0,
+    "logoCenterOffsetY": 0,
+    "width": 768
+  },
+  {
+    "controls": [
+      {
+        "bottom": 120.5,
+        "height": 40
+      },
+      {
+        "bottom": 120.5,
+        "height": 40
+      },
+      {
+        "bottom": 120.5,
+        "height": 40
+      }
+    ],
+    "documentWidth": 390,
+    "logoCenterOffsetX": 0,
+    "logoCenterOffsetY": 0,
+    "width": 390
+  },
+  {
+    "controls": [
+      {
+        "bottom": 120,
+        "height": 40
+      },
+      {
+        "bottom": 120,
+        "height": 40
+      },
+      {
+        "bottom": 120,
+        "height": 40
+      }
+    ],
+    "documentWidth": 320,
+    "logoCenterOffsetX": 0,
+    "logoCenterOffsetY": 0,
+    "width": 320
+  }
+]

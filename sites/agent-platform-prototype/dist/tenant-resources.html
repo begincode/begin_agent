@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>租户资源概况 · Agent 平台交互原型</title>
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/common.js" defer></script>
+<script src="assets/management.js" defer></script>
+</head>
+<body data-page="tenant-resources">
+<div class="app">
+  <aside class="sidebar">
+    <button class="sidebar-toggle" id="sidebar-toggle" title="折叠侧边栏" aria-label="折叠侧边栏">‹</button>
+    <div class="brand"><div class="logo">A</div><div><b>Agent Platform</b><span>内部智能体平台</span></div></div>
+    <a class="tenant" title="进入租户管理" href="tenant.html"><small>当前租户</small><strong>研发效能中心</strong></a>
+    <div class="nav-group">
+      <div class="nav-label">工作台</div>
+      <a class="nav-btn" title="概览" aria-label="概览" href="index.html"><span class="nav-icon">▦</span><span>概览</span></a>
+      <a class="nav-btn" title="我的任务" aria-label="我的任务" href="tasks.html"><span class="nav-icon">☑</span><span>我的任务</span></a>
+      <a class="nav-btn" title="Agent" aria-label="Agent" href="agents.html"><span class="nav-icon">◈</span><span>Agent</span></a>
+      <a class="nav-btn" title="运行记录" aria-label="运行记录" href="runs.html"><span class="nav-icon">▷</span><span>运行记录</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">资源</div>
+      <a class="nav-btn" title="模型" aria-label="模型" href="models.html"><span class="nav-icon">⬡</span><span>模型</span></a>
+      <a class="nav-btn" title="工具" aria-label="工具" href="tools.html"><span class="nav-icon">⌘</span><span>工具</span></a>
+      <a class="nav-btn" title="MCP" aria-label="MCP" href="mcps.html"><span class="nav-icon">⇄</span><span>MCP</span></a>
+      <a class="nav-btn" title="Skill" aria-label="Skill" href="skills.html"><span class="nav-icon">✦</span><span>Skill</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">管理</div>
+      <a class="nav-btn active" aria-current="page" title="租户设置" aria-label="租户设置" href="tenant.html"><span class="nav-icon">⚙</span><span>租户设置</span></a>
+      <a class="nav-btn" title="成员管理" aria-label="成员管理" href="members.html"><span class="nav-icon">♙</span><span>成员管理</span></a>
+      <a class="nav-btn" title="角色权限" aria-label="角色权限" href="roles.html"><span class="nav-icon">⊕</span><span>角色权限</span></a>
+      <a class="nav-btn" title="用户管理" aria-label="用户管理" href="users.html"><span class="nav-icon">◎</span><span>用户管理</span></a>
+    </div>
+    <div class="sidebar-foot">多页面交互原型 v0.2<br>数据不会提交到服务端</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar"><div class="crumb" id="crumb">租户资源概况</div><div class="user"><a class="tenant-chip" href="tenant.html">研发效能中心</a><span class="prototype-tag">交互原型</span><div class="avatar">B</div><span>租户管理员</span></div></header>
+    <div class="content">
+<section class="view active" id="view-tenant">
+
+        <div class="page-head"><div><h1>租户资源概况</h1><p>查看当前租户已授权的模型、工具、MCP 和 Skill。</p></div><a class="btn" href="tenant-audit.html">查看审计记录</a></div>
+        <div class="panel tenant-hero"><div class="agent-mark">研</div><div><h2>研发效能中心</h2><p>tnt_rd_efficiency · 创建于 2026-10-01</p></div><span class="badge green"><i class="dot"></i>正常</span></div>
+        <div class="stats"><div class="stat"><span>成员</span><b>18</b><em>3 位管理员</em></div><div class="stat"><span>Agent</span><b>4</b><em>3 个已发布</em></div><div class="stat"><span>已授权能力</span><b>9</b><em>模型、工具、MCP、Skill</em></div><div class="stat"><span>本月 Token</span><b>8.6M</b><em>额度使用 29%</em></div></div>
+        <div class="panel"><nav class="tabs"><a class="tab " href="tenant.html">基本信息</a><a class="tab active" href="tenant-resources.html">资源概况</a></nav><div class="manage-pane active" id="manage-capabilities">
+            <div class="prototype-note">这里控制租户能用什么；Agent 配置页只能选择本租户已经启用的能力。</div>
+            <div class="manage-grid">
+              <div class="manage-card"><h3>模型</h3><p>租户密钥、额度和默认模型</p><div class="manage-row"><div><b>2 个已启用</b><span>默认：DeepSeek Chat</span></div><a class="link" href="models.html">管理全部 →</a></div></div>
+              <div class="manage-card"><h3>工具</h3><p>工具授权、数据范围和风险规则</p><div class="manage-row"><div><b>3 个已授权</b><span>2 个只读，1 个需确认</span></div><a class="link" href="tools.html">管理全部 →</a></div></div>
+              <div class="manage-card"><h3>MCP 连接</h3><p>连接地址、凭据和开放工具</p><div class="manage-row"><div><b>1 个已连接</b><span>1 个等待配置</span></div><a class="link" href="mcps.html">管理全部 →</a></div></div>
+              <div class="manage-card"><h3>Skill</h3><p>公共 Skill 安装和租户私有 Skill</p><div class="manage-row"><div><b>2 个已安装</b><span>1 个可安装</span></div><a class="link" href="skills.html">管理全部 →</a></div></div>
+            </div>
+          </div></div>
+</section>
+</div></main></div>
+<div class="toast" id="toast" role="status"></div>
+</body></html>

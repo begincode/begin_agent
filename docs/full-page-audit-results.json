@@ -1,0 +1,651 @@
+{
+  "kind": "browser_ui_acceptance_with_isolated_api_fixtures",
+  "geometry": [
+    {
+      "bottomDelta": 0,
+      "code": [
+        {
+          "scrollWidth": 1045,
+          "width": 257
+        },
+        {
+          "scrollWidth": 311,
+          "width": 257
+        }
+      ],
+      "composerBottom": 800,
+      "controls": [
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SUMMARY"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        }
+      ],
+      "documentHeight": 800,
+      "documentWidth": 320,
+      "height": 800,
+      "logoDelta": [
+        0,
+        0
+      ],
+      "table": [
+        {
+          "scrollWidth": 601,
+          "width": 257
+        }
+      ],
+      "toolbars": [
+        {
+          "buttonWithin": true,
+          "height": 55
+        },
+        {
+          "buttonWithin": true,
+          "height": 55
+        }
+      ],
+      "width": 320
+    },
+    {
+      "bottomDelta": 0,
+      "code": [
+        {
+          "scrollWidth": 1045,
+          "width": 327
+        },
+        {
+          "scrollWidth": 327,
+          "width": 327
+        }
+      ],
+      "composerBottom": 844,
+      "controls": [
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SUMMARY"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        }
+      ],
+      "documentHeight": 844,
+      "documentWidth": 390,
+      "height": 844,
+      "logoDelta": [
+        0,
+        0
+      ],
+      "table": [
+        {
+          "scrollWidth": 601,
+          "width": 327
+        }
+      ],
+      "toolbars": [
+        {
+          "buttonWithin": true,
+          "height": 55
+        },
+        {
+          "buttonWithin": true,
+          "height": 55
+        }
+      ],
+      "width": 390
+    },
+    {
+      "bottomDelta": 0,
+      "code": [
+        {
+          "scrollWidth": 1135,
+          "width": 649
+        },
+        {
+          "scrollWidth": 649,
+          "width": 649
+        }
+      ],
+      "composerBottom": 1024,
+      "controls": [
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SUMMARY"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        }
+      ],
+      "documentHeight": 1024,
+      "documentWidth": 768,
+      "height": 1024,
+      "logoDelta": [
+        0,
+        0
+      ],
+      "table": [
+        {
+          "scrollWidth": 649,
+          "width": 649
+        }
+      ],
+      "toolbars": [
+        {
+          "buttonWithin": true,
+          "height": 55
+        },
+        {
+          "buttonWithin": true,
+          "height": 55
+        }
+      ],
+      "width": 768
+    },
+    {
+      "bottomDelta": 0,
+      "code": [
+        {
+          "scrollWidth": 1135,
+          "width": 1096
+        },
+        {
+          "scrollWidth": 1096,
+          "width": 1096
+        }
+      ],
+      "composerBottom": 720,
+      "controls": [
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SUMMARY"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        }
+      ],
+      "documentHeight": 720,
+      "documentWidth": 1280,
+      "height": 720,
+      "logoDelta": [
+        0,
+        0
+      ],
+      "table": [
+        {
+          "scrollWidth": 1096,
+          "width": 1096
+        }
+      ],
+      "toolbars": [
+        {
+          "buttonWithin": true,
+          "height": 55
+        },
+        {
+          "buttonWithin": true,
+          "height": 55
+        }
+      ],
+      "width": 1280
+    },
+    {
+      "bottomDelta": 0,
+      "code": [
+        {
+          "scrollWidth": 1135,
+          "width": 725
+        },
+        {
+          "scrollWidth": 725,
+          "width": 725
+        }
+      ],
+      "composerBottom": 390,
+      "controls": [
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SUMMARY"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        }
+      ],
+      "documentHeight": 390,
+      "documentWidth": 844,
+      "height": 390,
+      "logoDelta": [
+        0,
+        0
+      ],
+      "table": [
+        {
+          "scrollWidth": 725,
+          "width": 725
+        }
+      ],
+      "toolbars": [
+        {
+          "buttonWithin": true,
+          "height": 55
+        },
+        {
+          "buttonWithin": true,
+          "height": 55
+        }
+      ],
+      "width": 844
+    },
+    {
+      "bottomDelta": 0,
+      "code": [
+        {
+          "scrollWidth": 1045,
+          "width": 327
+        },
+        {
+          "scrollWidth": 327,
+          "width": 327
+        }
+      ],
+      "composerBottom": 360,
+      "controls": [
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SELECT"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "SUMMARY"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        },
+        {
+          "height": 40,
+          "radius": "8px",
+          "tag": "BUTTON"
+        }
+      ],
+      "documentHeight": 360,
+      "documentWidth": 390,
+      "height": 360,
+      "logoDelta": [
+        0,
+        0
+      ],
+      "table": [
+        {
+          "scrollWidth": 601,
+          "width": 327
+        }
+      ],
+      "toolbars": [
+        {
+          "buttonWithin": true,
+          "height": 55
+        },
+        {
+          "buttonWithin": true,
+          "height": 55
+        }
+      ],
+      "width": 390
+    }
+  ],
+  "interactions": [
+    {
+      "width": 1280,
+      "state": "ui-audit-error",
+      "passed": true
+    },
+    {
+      "width": 1280,
+      "state": "ui-audit-stream-error",
+      "passed": true
+    },
+    {
+      "width": 1280,
+      "state": "ui-audit-length",
+      "passed": true
+    },
+    {
+      "width": 1280,
+      "state": "ui-audit-slow",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "state": "ui-audit-error",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "state": "ui-audit-stream-error",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "state": "ui-audit-length",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "state": "ui-audit-slow",
+      "passed": true
+    }
+  ],
+  "configurationVerification": [
+    {
+      "buttonsDisabled": true,
+      "composerBottom": 720,
+      "documentWidth": 1280,
+      "fieldsDisabled": true,
+      "formHeight": 360,
+      "formScrollable": true,
+      "status": "正在测试已保存的配置…",
+      "width": 1280
+    },
+    {
+      "buttonsDisabled": true,
+      "composerBottom": 844,
+      "documentWidth": 390,
+      "fieldsDisabled": true,
+      "formHeight": 379.796875,
+      "formScrollable": true,
+      "status": "正在测试已保存的配置…",
+      "width": 390
+    }
+  ],
+  "configurationSave": [
+    {
+      "buttonHeight": 40,
+      "buttonLabel": "保存中…",
+      "buttonWidth": 83.2109375,
+      "checkboxCenterDelta": 0,
+      "fieldsDisabled": true,
+      "textLines": 1,
+      "textWidth": 55.2109375,
+      "width": 1280
+    },
+    {
+      "buttonHeight": 40,
+      "buttonLabel": "保存中…",
+      "buttonWidth": 83.2109375,
+      "checkboxCenterDelta": 0,
+      "fieldsDisabled": true,
+      "textLines": 1,
+      "textWidth": 55.2109375,
+      "width": 390
+    }
+  ],
+  "focus": {
+    "keyboardButtonOutline": "2px rgb(96, 165, 250)",
+    "textareaBorder": "rgb(96, 165, 250)",
+    "textareaShadow": "0 0 0 3px rgb(219, 234, 254)"
+  }
+}

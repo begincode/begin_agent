@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>工具管理 · Agent 平台交互原型</title>
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/common.js" defer></script>
+<script src="assets/resources.js" defer></script>
+</head>
+<body data-page="tools">
+<div class="app">
+  <aside class="sidebar">
+    <button class="sidebar-toggle" id="sidebar-toggle" title="折叠侧边栏" aria-label="折叠侧边栏">‹</button>
+    <div class="brand"><div class="logo">A</div><div><b>Agent Platform</b><span>内部智能体平台</span></div></div>
+    <a class="tenant" title="进入租户管理" href="tenant.html"><small>当前租户</small><strong>研发效能中心</strong></a>
+    <div class="nav-group">
+      <div class="nav-label">工作台</div>
+      <a class="nav-btn" title="概览" aria-label="概览" href="index.html"><span class="nav-icon">▦</span><span>概览</span></a>
+      <a class="nav-btn" title="我的任务" aria-label="我的任务" href="tasks.html"><span class="nav-icon">☑</span><span>我的任务</span></a>
+      <a class="nav-btn" title="Agent" aria-label="Agent" href="agents.html"><span class="nav-icon">◈</span><span>Agent</span></a>
+      <a class="nav-btn" title="运行记录" aria-label="运行记录" href="runs.html"><span class="nav-icon">▷</span><span>运行记录</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">资源</div>
+      <a class="nav-btn" title="模型" aria-label="模型" href="models.html"><span class="nav-icon">⬡</span><span>模型</span></a>
+      <a class="nav-btn active" aria-current="page" title="工具" aria-label="工具" href="tools.html"><span class="nav-icon">⌘</span><span>工具</span></a>
+      <a class="nav-btn" title="MCP" aria-label="MCP" href="mcps.html"><span class="nav-icon">⇄</span><span>MCP</span></a>
+      <a class="nav-btn" title="Skill" aria-label="Skill" href="skills.html"><span class="nav-icon">✦</span><span>Skill</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">管理</div>
+      <a class="nav-btn" title="租户设置" aria-label="租户设置" href="tenant.html"><span class="nav-icon">⚙</span><span>租户设置</span></a>
+      <a class="nav-btn" title="成员管理" aria-label="成员管理" href="members.html"><span class="nav-icon">♙</span><span>成员管理</span></a>
+      <a class="nav-btn" title="角色权限" aria-label="角色权限" href="roles.html"><span class="nav-icon">⊕</span><span>角色权限</span></a>
+      <a class="nav-btn" title="用户管理" aria-label="用户管理" href="users.html"><span class="nav-icon">◎</span><span>用户管理</span></a>
+    </div>
+    <div class="sidebar-foot">多页面交互原型 v0.2<br>数据不会提交到服务端</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar"><div class="crumb" id="crumb">工具管理</div><div class="user"><a class="tenant-chip" href="tenant.html">研发效能中心</a><span class="prototype-tag">交互原型</span><div class="avatar">B</div><span>租户管理员</span></div></header>
+    <div class="content">
+<section class="view active" id="view-tools">
+<div class="page-head"><div><h1>工具管理</h1><p>工具按业务用途分组，独立管理租户授权、数据范围和风险规则。</p></div><button class="btn primary" id="add-tool">＋ 添加工具</button></div><div class="panel"><div class="panel-head"><div class="toolbar"><div class="search"><input id="tool-search" placeholder="搜索工具名称、编码或类型"></div><select class="select" id="tool-group-filter"><option value="all">全部分组</option><option value="data">数据查询</option><option value="knowledge">知识检索</option><option value="output">内容输出</option></select></div><span class="sub" id="tool-count">6 个工具</span></div><div class="table-wrap"><table><thead><tr><th>工具</th><th>分组</th><th>类型</th><th>权限</th><th>使用 Agent</th><th>状态</th><th></th></tr></thead><tbody id="tool-rows"><tr data-resource-row data-tool-group="data"><td><b>经营数据查询</b><div class="sub">tool_sales_query</div></td><td><span class="group-tag">数据查询</span></td><td>HTTP</td><td>只读</td><td>2</td><td><span class="badge green">已启用</span></td><td><button class="link" data-page-detail="tool" data-page-name="经营数据查询">配置</button></td></tr><tr data-resource-row data-tool-group="data"><td><b>SQL 只读查询</b><div class="sub">tool_sql_readonly</div></td><td><span class="group-tag">数据查询</span></td><td>数据库</td><td>只读</td><td>1</td><td><span class="badge green">已启用</span></td><td><button class="link" data-page-detail="tool" data-page-name="SQL 只读查询">配置</button></td></tr><tr data-resource-row data-tool-group="knowledge"><td><b>内部知识检索</b><div class="sub">tool_knowledge_search</div></td><td><span class="group-tag">知识检索</span></td><td>知识库</td><td>只读</td><td>3</td><td><span class="badge green">已启用</span></td><td><button class="link" data-page-detail="tool" data-page-name="内部知识检索">配置</button></td></tr><tr data-resource-row data-tool-group="knowledge"><td><b>企业 Wiki 搜索</b><div class="sub">tool_wiki_search</div></td><td><span class="group-tag">知识检索</span></td><td>MCP</td><td>只读</td><td>2</td><td><span class="badge green">已启用</span></td><td><button class="link" data-page-detail="tool" data-page-name="企业 Wiki 搜索">配置</button></td></tr><tr data-resource-row data-tool-group="output"><td><b>报告文件生成</b><div class="sub">tool_report_file</div></td><td><span class="group-tag">内容输出</span></td><td>内部服务</td><td>写入需确认</td><td>1</td><td><span class="badge amber">需确认</span></td><td><button class="link" data-page-detail="tool" data-page-name="报告文件生成">配置</button></td></tr><tr data-resource-row data-tool-group="output"><td><b>邮件草稿生成</b><div class="sub">tool_email_draft</div></td><td><span class="group-tag">内容输出</span></td><td>内部服务</td><td>仅生成草稿</td><td>1</td><td><span class="badge green">已启用</span></td><td><button class="link" data-page-detail="tool" data-page-name="邮件草稿生成">配置</button></td></tr></tbody></table></div></div>
+</section>
+</div></main></div>
+<div class="toast" id="toast" role="status"></div>
+</body></html>

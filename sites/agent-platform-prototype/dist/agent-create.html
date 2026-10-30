@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>创建 Agent · Agent 平台交互原型</title>
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/common.js" defer></script>
+<script src="assets/agents.js" defer></script>
+</head>
+<body data-page="agent-create">
+<div class="app">
+  <aside class="sidebar">
+    <button class="sidebar-toggle" id="sidebar-toggle" title="折叠侧边栏" aria-label="折叠侧边栏">‹</button>
+    <div class="brand"><div class="logo">A</div><div><b>Agent Platform</b><span>内部智能体平台</span></div></div>
+    <a class="tenant" title="进入租户管理" href="tenant.html"><small>当前租户</small><strong>研发效能中心</strong></a>
+    <div class="nav-group">
+      <div class="nav-label">工作台</div>
+      <a class="nav-btn" title="概览" aria-label="概览" href="index.html"><span class="nav-icon">▦</span><span>概览</span></a>
+      <a class="nav-btn" title="我的任务" aria-label="我的任务" href="tasks.html"><span class="nav-icon">☑</span><span>我的任务</span></a>
+      <a class="nav-btn active" aria-current="page" title="Agent" aria-label="Agent" href="agents.html"><span class="nav-icon">◈</span><span>Agent</span></a>
+      <a class="nav-btn" title="运行记录" aria-label="运行记录" href="runs.html"><span class="nav-icon">▷</span><span>运行记录</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">资源</div>
+      <a class="nav-btn" title="模型" aria-label="模型" href="models.html"><span class="nav-icon">⬡</span><span>模型</span></a>
+      <a class="nav-btn" title="工具" aria-label="工具" href="tools.html"><span class="nav-icon">⌘</span><span>工具</span></a>
+      <a class="nav-btn" title="MCP" aria-label="MCP" href="mcps.html"><span class="nav-icon">⇄</span><span>MCP</span></a>
+      <a class="nav-btn" title="Skill" aria-label="Skill" href="skills.html"><span class="nav-icon">✦</span><span>Skill</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">管理</div>
+      <a class="nav-btn" title="租户设置" aria-label="租户设置" href="tenant.html"><span class="nav-icon">⚙</span><span>租户设置</span></a>
+      <a class="nav-btn" title="成员管理" aria-label="成员管理" href="members.html"><span class="nav-icon">♙</span><span>成员管理</span></a>
+      <a class="nav-btn" title="角色权限" aria-label="角色权限" href="roles.html"><span class="nav-icon">⊕</span><span>角色权限</span></a>
+      <a class="nav-btn" title="用户管理" aria-label="用户管理" href="users.html"><span class="nav-icon">◎</span><span>用户管理</span></a>
+    </div>
+    <div class="sidebar-foot">多页面交互原型 v0.2<br>数据不会提交到服务端</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar"><div class="crumb" id="crumb">创建 Agent</div><div class="user"><a class="tenant-chip" href="tenant.html">研发效能中心</a><span class="prototype-tag">交互原型</span><div class="avatar">B</div><span>租户管理员</span></div></header>
+    <div class="content">
+<section class="view active" id="view-agent-create">
+<div class="page-head"><div><h1>创建 Agent</h1><p>完成基本信息、模型工具和协作配置，再进入调试。</p></div><a class="btn" href="agents.html">返回 Agent 列表</a></div><div class="panel wizard"><div class="stepper"><div class="stepper-item active" data-step="1">基本信息</div><div class="stepper-item" data-step="2">模型与工具</div><div class="stepper-item" data-step="3">协作方式</div></div><div class="wizard-body"><div class="drawer-step active" data-drawer-step="1"><div class="form-grid"><div class="field span-2"><label>Agent名称</label><input id="new-agent-name" placeholder="例如：合同审核助手"><small id="name-error"></small></div><div class="field span-2"><label>说明</label><textarea id="new-agent-desc" placeholder="说明这个Agent负责什么"></textarea></div><div class="field span-2"><label>类型</label><div class="option-list"><label class="option"><input type="radio" name="new-type" value="normal" checked><div><b>普通 Agent</b><span>独立完成任务，可以调用工具。</span></div></label><label class="option"><input type="radio" name="new-type" value="supervisor"><div><b>主 Agent</b><span>可以拆分任务并调度多个 SubAgent。</span></div></label></div></div></div></div><div class="drawer-step" data-drawer-step="2"><div class="form-grid"><div class="field span-2"><label>模型配置</label><select id="new-agent-model"><option>DeepSeek Chat</option><option>公司 OpenAI 兼容模型</option><option>Claude Sonnet</option></select><small>系统会在发布前检查模型是否支持所需能力。</small></div><div class="field span-2"><label>工具授权</label><small style="margin-bottom:9px">按分组选择工具，也可以一次选择整个分组。</small><div class="tool-groups"><div class="tool-group"><div class="tool-group-head"><div><b>数据查询</b><span>2 个工具</span></div><label><input type="checkbox" data-tool-group-all="data"> 全选</label></div><div class="tool-group-options"><label class="option"><input type="checkbox" data-tool-group="data" value="经营数据查询"><div><b>经营数据查询</b><span>只读查询公司经营指标。</span></div></label><label class="option"><input type="checkbox" data-tool-group="data" value="SQL 只读查询"><div><b>SQL 只读查询</b><span>执行经过限制的只读 SQL。</span></div></label></div></div><div class="tool-group"><div class="tool-group-head"><div><b>知识检索</b><span>2 个工具</span></div><label><input type="checkbox" data-tool-group-all="knowledge"> 全选</label></div><div class="tool-group-options"><label class="option"><input type="checkbox" data-tool-group="knowledge" value="内部知识检索" checked><div><b>内部知识检索</b><span>按照当前租户权限检索知识库。</span></div></label><label class="option"><input type="checkbox" data-tool-group="knowledge" value="企业 Wiki 搜索"><div><b>企业 Wiki 搜索</b><span>通过租户 MCP 连接搜索 Wiki。</span></div></label></div></div><div class="tool-group"><div class="tool-group-head"><div><b>内容输出</b><span>2 个工具</span></div><label><input type="checkbox" data-tool-group-all="output"> 全选</label></div><div class="tool-group-options"><label class="option"><input type="checkbox" data-tool-group="output" value="报告文件生成"><div><b>报告文件生成</b><span>生成可下载的报告文件。</span></div></label><label class="option"><input type="checkbox" data-tool-group="output" value="邮件草稿生成"><div><b>邮件草稿生成</b><span>只生成草稿，不直接发送邮件。</span></div></label></div></div></div></div></div></div><div class="drawer-step" data-drawer-step="3"><div id="collab-normal" class="callout" style="padding:13px;background:#f8fafc;border:1px solid var(--line);border-radius:9px">普通 Agent 创建后可以直接进入调试，不配置 SubAgent。</div><div id="collab-supervisor" style="display:none"><div class="field"><label>选择可调用的 SubAgent</label><div class="option-list" id="new-sub-options"></div></div></div></div></div><div class="wizard-foot"><button class="btn" id="drawer-prev">取消</button><button class="btn primary" id="drawer-next">下一步</button></div></div>
+</section>
+</div></main></div>
+<div class="toast" id="toast" role="status"></div>
+</body></html>

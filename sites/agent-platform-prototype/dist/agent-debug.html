@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent / 调试运行 · Agent 平台交互原型</title>
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/common.js" defer></script>
+<script src="assets/agents.js" defer></script>
+</head>
+<body data-page="agent-debug">
+<div class="app">
+  <aside class="sidebar">
+    <button class="sidebar-toggle" id="sidebar-toggle" title="折叠侧边栏" aria-label="折叠侧边栏">‹</button>
+    <div class="brand"><div class="logo">A</div><div><b>Agent Platform</b><span>内部智能体平台</span></div></div>
+    <a class="tenant" title="进入租户管理" href="tenant.html"><small>当前租户</small><strong>研发效能中心</strong></a>
+    <div class="nav-group">
+      <div class="nav-label">工作台</div>
+      <a class="nav-btn" title="概览" aria-label="概览" href="index.html"><span class="nav-icon">▦</span><span>概览</span></a>
+      <a class="nav-btn" title="我的任务" aria-label="我的任务" href="tasks.html"><span class="nav-icon">☑</span><span>我的任务</span></a>
+      <a class="nav-btn active" aria-current="page" title="Agent" aria-label="Agent" href="agents.html"><span class="nav-icon">◈</span><span>Agent</span></a>
+      <a class="nav-btn" title="运行记录" aria-label="运行记录" href="runs.html"><span class="nav-icon">▷</span><span>运行记录</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">资源</div>
+      <a class="nav-btn" title="模型" aria-label="模型" href="models.html"><span class="nav-icon">⬡</span><span>模型</span></a>
+      <a class="nav-btn" title="工具" aria-label="工具" href="tools.html"><span class="nav-icon">⌘</span><span>工具</span></a>
+      <a class="nav-btn" title="MCP" aria-label="MCP" href="mcps.html"><span class="nav-icon">⇄</span><span>MCP</span></a>
+      <a class="nav-btn" title="Skill" aria-label="Skill" href="skills.html"><span class="nav-icon">✦</span><span>Skill</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">管理</div>
+      <a class="nav-btn" title="租户设置" aria-label="租户设置" href="tenant.html"><span class="nav-icon">⚙</span><span>租户设置</span></a>
+      <a class="nav-btn" title="成员管理" aria-label="成员管理" href="members.html"><span class="nav-icon">♙</span><span>成员管理</span></a>
+      <a class="nav-btn" title="角色权限" aria-label="角色权限" href="roles.html"><span class="nav-icon">⊕</span><span>角色权限</span></a>
+      <a class="nav-btn" title="用户管理" aria-label="用户管理" href="users.html"><span class="nav-icon">◎</span><span>用户管理</span></a>
+    </div>
+    <div class="sidebar-foot">多页面交互原型 v0.2<br>数据不会提交到服务端</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar"><div class="crumb" id="crumb">Agent / 调试运行</div><div class="user"><a class="tenant-chip" href="tenant.html">研发效能中心</a><span class="prototype-tag">交互原型</span><div class="avatar">B</div><span>租户管理员</span></div></header>
+    <div class="content">
+<section class="view active" id="view-detail">
+
+        <div class="detail-head"><a class="back" href="agents.html">←</a><div class="agent-mark" id="detail-mark">经</div><div class="detail-title"><h1 id="detail-name">经营分析助手</h1><p id="detail-code">agt_01J8M3...</p></div><div class="detail-actions"><button class="btn" id="publish-btn">发布新版本</button><a class="btn primary" data-agent-tab="debug" href="agent-debug.html">运行测试</a></div></div>
+        <nav class="tabs"><a class="tab " data-agent-tab="config" href="agent-config.html">基本配置</a><a class="tab " data-agent-tab="collaboration" href="agent-collaboration.html">SubAgent 协作</a><a class="tab active" data-agent-tab="debug" href="agent-debug.html">调试运行</a><a class="tab " data-agent-tab="versions" href="agent-versions.html">版本记录</a></nav><div class="tab-pane active" id="tab-debug"><div class="debug-layout"><div class="panel chat"><div class="panel-head"><h2>对话测试</h2><span class="badge gray">不会写入生产会话</span></div><div class="chat-body" id="chat-body"><div class="bubble agent">你好，我可以调度数据查询、知识检索和报告生成 Agent。请输入一个测试问题。</div></div><div class="chat-input"><textarea id="debug-input" placeholder="例如：分析本月销售下滑的主要原因"></textarea><button class="btn primary" id="run-test">运行</button></div></div><div class="panel trace"><h3>执行轨迹</h3><div id="trace-body" class="trace-empty">运行测试后显示主 Agent、SubAgent 和工具调用步骤。</div></div></div></div>
+</section>
+</div></main></div>
+<div class="toast" id="toast" role="status"></div>
+</body></html>
