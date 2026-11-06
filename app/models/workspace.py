@@ -2,7 +2,16 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +29,23 @@ class AgentDraft(Scoped, Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class AgentCreationReceipt(Scoped, Base):
+    __tablename__ = "agent_creation_receipt"
+    __table_args__ = (
+        UniqueConstraint("tenant_code", "created_by", "request_hash"),
+        ForeignKeyConstraint(
+            ["tenant_code", "agent_code"], ["agent.tenant_code", "agent.agent_code"]
+        ),
+        ForeignKeyConstraint(["created_by"], ["platform_user.user_code"]),
+    )
+    receipt_code: Mapped[str] = mapped_column(String(40), unique=True)
+    created_by: Mapped[str] = mapped_column(String(40))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    agent_code: Mapped[str] = mapped_column(String(40))
+    result: Mapped[dict] = mapped_column(JSONB)
 
 
 class TaskTurn(Scoped, Base):
@@ -110,3 +136,21 @@ class LoginBucket(Base):
     bucket_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     count: Mapped[int] = mapped_column(Integer)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WorkerPulse(Base):
+    __tablename__ = "worker_pulse"
+    instance_code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    stopped: Mapped[bool] = mapped_column(default=False)
+
+
+class DiagnosticAcknowledgment(Scoped, Base):
+    __tablename__ = "diagnostic_acknowledgment"
+    __table_args__ = (
+        UniqueConstraint("tenant_code", "user_code", "fingerprint"),
+        ForeignKeyConstraint(["tenant_code"], ["tenant.tenant_code"]),
+        ForeignKeyConstraint(["user_code"], ["platform_user.user_code"]),
+    )
+    user_code: Mapped[str] = mapped_column(String(40))
+    fingerprint: Mapped[str] = mapped_column(String(64))

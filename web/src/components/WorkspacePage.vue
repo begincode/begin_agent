@@ -11,7 +11,8 @@ import {
   endpoint,
   type Row,
 } from "../workspace";
-import RunInspector from "./RunInspector.vue";
+import { asyncPage } from "../pageLoading";
+const RunInspector = asyncPage(() => import("./RunInspector.vue"));
 import OperationsOverview from "./OperationsOverview.vue";
 const props = defineProps<{ kind: string; code?: string }>();
 const { data, busy, readonly, can, go, act } = useWorkspace();
@@ -274,7 +275,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <section class="workspace-panel list-panel">
-        <div class="list-toolbar" :class="{ 'run-list-toolbar': kind === 'runs' }">
+        <div
+          class="list-toolbar"
+          :class="{ 'run-list-toolbar': kind === 'runs' }"
+        >
           <template v-if="kind === 'runs'">
             <label v-if="can('agents.read')"
               ><span class="visually-hidden">执行 Agent</span

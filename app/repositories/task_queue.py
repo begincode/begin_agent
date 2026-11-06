@@ -156,9 +156,10 @@ class TaskQueue:
             now = await session.scalar(select(func.clock_timestamp()))
             task.lease_expires_at = now + timedelta(seconds=self.lease_seconds)
 
-    async def finish(self, lease, status, output=None, reason=None, retryable=False):
+    async def finish(self, lease, status, output=None, reason=None, retryable=False, artifacts=()):
         async with self.factory() as session, session.begin():
             task = await self.owned(session, lease)
+            session.add_all(artifacts)
             task.error_code = reason
             if status == "SUCCEEDED" and task.input.get("expected_contains"):
                 output = {

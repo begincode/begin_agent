@@ -74,6 +74,19 @@ it("lets a publisher publish the saved draft without requiring configuration-wri
         current_version_code: "agv_old",
       };
     if (path.endsWith("/draft")) value = { revision: 2, config };
+    if (path.endsWith("/configuration"))
+      value = {
+        agent: {
+          agent_code: "agt_one",
+          agent_name: "发布验收",
+          status: 1,
+          agent_type: "NORMAL",
+          current_version_code: "agv_old",
+        },
+        draft: { revision: 2, config },
+        versions: [],
+        etag: '"configuration"',
+      };
     return new Response(JSON.stringify(value), {
       status: options.method === "POST" ? 201 : 200,
     });
@@ -180,6 +193,21 @@ it("passes the selected historical version when running an Agent test case", asy
         },
       ];
     if (path.endsWith("/run")) value = { task_code: "tsk_test" };
+    if (path.endsWith("/configuration"))
+      value = {
+        agent: {
+          agent_code: "agt_one",
+          agent_name: "助手",
+          status: 1,
+          current_version_code: "v2",
+        },
+        draft: { revision: 1, config },
+        versions: [
+          { version_code: "v2", version_no: 2, status: "PUBLISHED" },
+          { version_code: "v1", version_no: 1, status: "PUBLISHED" },
+        ],
+        etag: '"configuration"',
+      };
     return new Response(JSON.stringify(value), { status: 200 });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -223,11 +251,17 @@ it("keeps revoked bindings removable and excludes revoked tools from group selec
     })),
   ];
   const fetchMock = vi.fn(async (path: string) => {
-    const value = path.endsWith("/agt_one")
-      ? { agent_code: "agt_one", agent_name: "助手", status: 1 }
-      : path.endsWith("/draft")
-        ? { revision: 1, config: { ...config, tool_codes: ["tol_old"] } }
-        : [];
+    const value = path.endsWith("/configuration")
+      ? {
+          agent: { agent_code: "agt_one", agent_name: "助手", status: 1 },
+          draft: {
+            revision: 1,
+            config: { ...config, tool_codes: ["tol_old"] },
+          },
+          versions: [],
+          etag: '"configuration"',
+        }
+      : [];
     return new Response(JSON.stringify(value));
   });
   vi.stubGlobal("fetch", fetchMock);

@@ -1,10 +1,10 @@
 from fastapi import HTTPException
-from sqlalchemy import text
 
 from app.core.identity import new_code
 from app.model_gateway.domain.chat import ChatCompletionRequest, ChatMessage
 from app.models.platform import Agent, AgentRelation, AgentToolBinding, AgentVersion
 from app.repositories.platform import TenantRepository, public
+from app.services.configuration import graph_lock, match, relation_snapshot, snapshot, tag
 
 
 class AgentService:
@@ -13,8 +13,15 @@ class AgentService:
         self.repo = TenantRepository(session, tenant_code)
         self.tenant = tenant_code
 
-    async def publish(self, code, data, activate=True):
+    async def publish(
+        self, code, data, activate=True, *, expected=None, conditional=False, commit=True
+    ):
+        await graph_lock(self.session, self.tenant)
         agent = await self.repo.get(Agent, "agent_code", code, lock=True)
+        if conditional:
+            match(
+                expected, (await snapshot(self.repo, code, agent, include_versions=False))["etag"]
+            )
         if agent.status != 1:
             raise HTTPException(409, "Agent 已停用")
         from app.services.resources import require_resource
@@ -90,7 +97,12 @@ class AgentService:
             selected = data.mcp_tool_names.get(mcp_code)
             catalog = {t["name"]: t for t in row.tools}
             names = list(dict.fromkeys(selected)) if selected is not None else list(catalog)
-            if not row.checked_at or not names or any(n not in catalog for n in names):
+            if (
+                row.last_error
+                or not row.checked_at
+                or not names
+                or any(n not in catalog for n in names)
+            ):
                 raise HTTPException(409, "请先检测 MCP 连接，并选择已发现的工具")
             mcps.append(
                 {
@@ -140,16 +152,15 @@ class AgentService:
             )
         if activate:
             agent.current_version_code = version.version_code
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
         return public(version)
 
-    async def relate(self, code, data, relation_code=None):
+    async def relate(self, code, data, relation_code=None, *, expected=None):
         # Serialize graph edits for a tenant to prevent concurrent A->B / B->A races.
-        await self.session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended(:tenant, 0))"),
-            {"tenant": self.tenant},
-        )
-        await self.repo.get(Agent, "agent_code", code)
+        await graph_lock(self.session, self.tenant)
+        await self.repo.get(Agent, "agent_code", code, lock=True)
+        match(expected, tag(await relation_snapshot(self.repo, code)))
         row = (
             await self.repo.get(AgentRelation, "relation_code", relation_code, lock=True)
             if relation_code
@@ -169,6 +180,8 @@ class AgentService:
             edge.master_agent_code == code and edge.sub_agent_code == target for edge in edges
         ):
             raise HTTPException(409, "协作关系已存在，请编辑已有关系")
+        if row is None and sum(edge.master_agent_code == code for edge in edges) >= 1000:
+            raise HTTPException(422, "单个 Agent 最多配置 1000 条协作关系")
         graph = {}
         for edge in edges:
             if edge.enabled and edge.relation_code != relation_code:

@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import text
 
 from app.api.accounts import accounts_router
+from app.api.artifacts import artifacts_router
 from app.api.auth import IdentityMiddleware, auth_router
 from app.api.chat import install_model_error_handlers
 from app.api.platform import platform_router
@@ -16,6 +17,7 @@ from app.core.config import get_settings
 from app.core.directories import prepare_directories
 from app.core.logging import configure_logging
 from app.db.session import session_factory
+from app.services.snapshot_cache import SnapshotCache
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
 
@@ -67,7 +69,10 @@ def create_app() -> FastAPI:
                 )
                 if privileged:
                     raise RuntimeError("API 数据库角色必须为非超级用户且 NOBYPASSRLS")
-        yield
+        try:
+            yield
+        finally:
+            await _application.state.task_snapshots.close()
 
     application = FastAPI(
         lifespan=lifespan,
@@ -75,11 +80,13 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.environment in {"local", "test"} else None,
         redoc_url=None,
     )
+    application.state.task_snapshots = SnapshotCache()
     application.include_router(router)
     application.include_router(auth_router)
     application.include_router(platform_router)
     application.include_router(workspace_router)
     application.include_router(accounts_router)
+    application.include_router(artifacts_router)
     application.add_middleware(IdentityMiddleware)
     install_model_error_handlers(application)
     mount_frontend(application)

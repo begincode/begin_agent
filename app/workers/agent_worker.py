@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.directories import prepare_directories
 from app.core.identity import tenant_context
 from app.core.logging import configure_logging
+from app.db.schema import SCHEMA_REVISION
 from app.repositories.task_queue import LeaseLost, TaskQueue
 from app.runtime.agent import AgentRuntime, RuntimeFailure
 from app.workers.readiness import directory, report
@@ -33,6 +34,9 @@ async def serve() -> None:
                     text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user")
                 )
             ).one()
+            revision = await session.scalar(text("SELECT version_num FROM alembic_version"))
+            if revision != SCHEMA_REVISION:
+                raise RuntimeError("Worker 数据库迁移未就绪")
             if role.rolsuper or not role.rolbypassrls:
                 raise RuntimeError("Worker 必须使用独立的非超级用户 BYPASSRLS 数据库角色")
     worker_id = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
@@ -43,6 +47,22 @@ async def serve() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
     logger.info("Agent worker ready: worker=%s", worker_id)
+    from app.services.operations import pulse
+
+    instance = uuid.uuid4().hex
+
+    async def publish_pulse():
+        while not stop.is_set():
+            try:
+                await pulse(factory, instance)
+            except Exception:
+                logger.error("Database worker heartbeat failed (details redacted)")
+            try:
+                await asyncio.wait_for(stop.wait(), 10)
+            except TimeoutError:
+                pass
+
+    observer = asyncio.create_task(publish_pulse())
     try:
         while not stop.is_set():
             try:
@@ -66,6 +86,13 @@ async def serve() -> None:
                 except TimeoutError:
                     pass
     finally:
+        stop.set()
+        observer.cancel()
+        await asyncio.gather(observer, return_exceptions=True)
+        try:
+            await pulse(factory, instance, stopped=True)
+        except Exception:
+            logger.error("Database worker shutdown observation failed")
         (directory(settings) / f"{os.getpid()}.json").unlink(missing_ok=True)
         await engine.dispose()
 
@@ -91,7 +118,9 @@ async def process_lease(queue, runtime, lease, stop=None):
             await queue.finish(lease, "FAILED", reason="CANCELLED", retryable=True)
             return
         output = await execution
-        await queue.finish(lease, "SUCCEEDED", output)
+        from app.services.generated_files import finish_generated
+
+        await finish_generated(queue, lease, output)
     except LeaseLost:
         logger.info("Task ownership ended: task=%s", lease.task_code)
     except RuntimeFailure as exc:

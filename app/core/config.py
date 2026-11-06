@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = Field(default=1, ge=0.05, le=60)
     mcp_allowed_hosts: list[str] = Field(default_factory=list)
     worker_lease_seconds: int = Field(default=60, ge=6, le=3600)
+    artifact_storage_backend: Literal["local", "s3"] = "local"
+    artifact_local_dir: str | None = None
+    artifact_max_file_bytes: int = Field(default=20 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
+    artifact_s3_endpoint: str | None = None
+    artifact_s3_bucket: str = ""
+    artifact_s3_region: str = "us-east-1"
+    artifact_s3_access_key: SecretStr | None = None
+    artifact_s3_secret_key: SecretStr | None = None
+    artifact_s3_session_token: SecretStr | None = None
 
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-flash"
@@ -110,6 +119,31 @@ class Settings(BaseSettings):
                 raise ValueError(f"{label}目录不能位于版本目录：{path}")
         if self.data_dir and "credential_key_file" not in self.model_fields_set:
             self.credential_key_file = str(Path(self.data_dir) / "model-credential.key")
+        if self.artifact_local_dir:
+            artifact_dir = Path(self.artifact_local_dir).expanduser()
+            if not artifact_dir.is_absolute() or (
+                release and artifact_dir.resolve().is_relative_to(Path(release).resolve().parent)
+            ):
+                raise ValueError("文件对象目录须为版本目录外的持久化绝对路径")
+        if self.artifact_s3_endpoint:
+            endpoint = urlsplit(self.artifact_s3_endpoint)
+            if (
+                endpoint.scheme not in {"http", "https"}
+                or not endpoint.hostname
+                or endpoint.username
+                or endpoint.password
+                or endpoint.query
+                or endpoint.fragment
+                or endpoint.path not in {"", "/"}
+                or (self.environment not in {"local", "test"} and endpoint.scheme != "https")
+            ):
+                raise ValueError("S3 端点须为有效 HTTPS 源地址，本地测试允许 HTTP")
+        if bool(self.artifact_s3_access_key) != bool(self.artifact_s3_secret_key):
+            raise ValueError("S3 访问密钥必须成对配置")
+        if self.artifact_storage_backend == "s3" and not re.fullmatch(
+            r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", self.artifact_s3_bucket
+        ):
+            raise ValueError("请配置有效的 S3 私有桶名")
         if managed:
             key = Path(self.credential_key_file).expanduser()
             if not key.is_absolute() or (

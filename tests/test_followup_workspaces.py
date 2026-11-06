@@ -2,7 +2,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
-from test_platform_v1 import Gateway, configured_agent, post, queued
+from test_platform_v1 import Gateway, conditional, configured_agent, post, queued
 
 from app.core.identity import LOCAL_TENANT, new_code
 from app.models.platform import AgentRun, RunStep
@@ -176,12 +176,18 @@ async def test_rerun_rejects_disabled_agents_round_limit_and_test_tasks(client, 
     await finish_turn(db)
     source = (await client.get(f"/api/v1/tasks/{code}")).json()["turns"][0]
     body = {"source_turn_code": source["turn_code"], "idempotency_key": "blocked"}
-    await client.patch(
-        "/api/v1/agents/" + agent["agent_code"], json={"agent_name": "停用", "status": 0}
+    await conditional(
+        client,
+        "PATCH",
+        "/api/v1/agents/" + agent["agent_code"],
+        json={"agent_name": "停用", "status": 0},
     )
     await post(client, f"/tasks/{code}/rerun", body, status=409)
-    await client.patch(
-        "/api/v1/agents/" + agent["agent_code"], json={"agent_name": "恢复", "status": 1}
+    await conditional(
+        client,
+        "PATCH",
+        "/api/v1/agents/" + agent["agent_code"],
+        json={"agent_name": "恢复", "status": 1},
     )
     async with db() as session:
         turn = await session.scalar(

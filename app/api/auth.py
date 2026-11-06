@@ -239,17 +239,25 @@ async def auth_config(request: Request):
 async def resolve_identity(external_id, requested_tenant):
     s = get_settings()
     async with session_factory() as session:
-        await session.execute(
-            insert(PlatformUser)
-            .values(
-                user_code=new_code("usr"), external_user_id=external_id, display_name=external_id
-            )
-            .on_conflict_do_nothing(index_elements=["external_user_id"])
-        )
-        await session.commit()
         user = await session.scalar(
             select(PlatformUser).where(PlatformUser.external_user_id == external_id)
         )
+        if user is None:
+            # Existing accounts need fresh authorization reads, not a conflict INSERT/commit
+            # on every API request and every stream revalidation. Keep first-use creation atomic.
+            await session.execute(
+                insert(PlatformUser)
+                .values(
+                    user_code=new_code("usr"),
+                    external_user_id=external_id,
+                    display_name=external_id,
+                )
+                .on_conflict_do_nothing(index_elements=["external_user_id"])
+            )
+            await session.commit()
+            user = await session.scalar(
+                select(PlatformUser).where(PlatformUser.external_user_id == external_id)
+            )
         if not user or user.status != 1:
             raise HTTPException(403, "平台账号已停用")
         memberships = (
@@ -397,7 +405,14 @@ class IdentityMiddleware(BaseHTTPMiddleware):
                                 actor_code=principal.user_code,
                                 action=request.method + " " + path,
                                 resource_code=path.split("/")[-1],
-                                details={"status": response.status_code},
+                                details={
+                                    "status": response.status_code,
+                                    **(
+                                        {"idempotent_replay": True}
+                                        if response.headers.get("Idempotency-Replayed") == "true"
+                                        else {}
+                                    ),
+                                },
                             )
                         )
                         await session.commit()

@@ -45,6 +45,8 @@ def request_permission(method, path):
     if kind in {"me", "auth", "overview", "integration-status"}:
         return None
     if kind == "agents":
+        if len(parts) > 1 and parts[1] == "creation-requests":
+            return "agents.manage"
         if read:
             return "agents.read"
         if "versions" in parts or "rollback" in parts:

@@ -5,6 +5,8 @@ import { LiveAccessError, readTaskEvents } from "../taskLive";
 import { useWorkspace, label, date, type Row } from "../workspace";
 import MarkdownContent from "./MarkdownContent.vue";
 import ExecutionPanel from "./ExecutionPanel.vue";
+import TaskInputs from "./TaskInputs.vue";
+import { readInputFiles, type InputFile } from "../taskFiles";
 import TaskArtifacts from "./TaskArtifacts.vue";
 const props = defineProps<{ code: string }>();
 const { data, identity, busy, readonly, can, go, act, load } = useWorkspace();
@@ -41,11 +43,30 @@ const available = computed(() =>
 const canSend = computed(
   () =>
     !busy.value &&
+    !readingFiles.value &&
+    !fileError.value &&
     !readonly.value &&
     can("tasks.create") &&
     !!prompt.value.trim() &&
     (props.code === "new" ? !!agent.value : !running.value && owner.value),
 );
+const inputFiles = ref<InputFile[]>([]),
+  fileError = ref(""),
+  readingFiles = ref(false);
+async function chooseFiles(event: Event) {
+  const input = event.target as HTMLInputElement;
+  readingFiles.value = true;
+  fileError.value = "";
+  inputFiles.value = [];
+  try {
+    inputFiles.value = await readInputFiles(Array.from(input.files || []));
+  } catch (e) {
+    fileError.value = e instanceof Error ? e.message : "附件读取失败";
+    input.value = "";
+  } finally {
+    readingFiles.value = false;
+  }
+}
 let rerunSource = "",
   rerunKey = "";
 async function rerun() {
@@ -227,6 +248,7 @@ async function send() {
         title: title.value || prompt.value.slice(0, 80),
         prompt: prompt.value,
         idempotency_key: key,
+        attachments: inputFiles.value,
       });
       await load();
       go("tasks/" + task.task_code);
@@ -308,11 +330,31 @@ onBeforeUnmount(() => {
             placeholder="描述目标、背景和你期望的结果…"
           />
         </label>
+        <label
+          >参考附件<input
+            type="file"
+            multiple
+            accept=".txt,.md,.csv,.json"
+            :disabled="busy || readonly || readingFiles"
+            @change="chooseFiles"
+        /></label>
+        <p class="muted">
+          最多 3 个 UTF-8 文本文件，单个 32KiB、合计 30000
+          字符；提交后固定。文件内容将发送给执行模型。
+        </p>
+        <p v-if="fileError" class="inline-error" role="alert">
+          {{ fileError }}
+        </p>
+        <p v-for="file in inputFiles" :key="file.file_name" class="code-text">
+          {{ file.file_name }}
+        </p>
         <div class="row-actions">
           <button
             class="primary-button"
             :disabled="
               busy ||
+              readingFiles ||
+              !!fileError ||
               readonly ||
               !can('tasks.create') ||
               !prompt.trim() ||
@@ -334,8 +376,10 @@ onBeforeUnmount(() => {
         <h1>{{ detail?.title || "加载任务…" }}</h1>
         <p class="muted">
           {{
+            detail?.agent_name ||
             data.agents?.find((a) => a.agent_code === detail?.agent_code)
-              ?.agent_name || "Agent"
+              ?.agent_name ||
+            "Agent"
           }}
           · 固定版本执行
         </p>
@@ -426,6 +470,11 @@ onBeforeUnmount(() => {
     >
       <div class="task-chat-column">
         <div ref="scroll" class="task-messages">
+          <TaskInputs
+            v-if="detail?.input?.attachments?.length && pane !== 'runs'"
+            :task-code="code"
+            :files="detail.input.attachments"
+          />
           <template v-if="pane === 'conversation' && detail"
             ><div
               v-for="turn in detail.turns"
@@ -524,6 +573,8 @@ onBeforeUnmount(() => {
           <TaskArtifacts
             v-if="pane === 'artifacts' && detail"
             :artifacts="detail.artifacts"
+            :task-code="code"
+            :can-upload="detail.status === 'SUCCEEDED' && owner"
           />
         </div>
         <footer v-if="pane === 'conversation'" class="task-composer">

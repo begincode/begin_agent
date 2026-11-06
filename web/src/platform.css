@@ -1869,3 +1869,60 @@ pre {
 .live-activity h3 {
   font-size: 12px;
 }
+
+.artifact-upload {
+  margin-bottom: 20px;
+}
+.artifact-checksum {
+  overflow-wrap: anywhere;
+}
+.artifact-card .section-heading h2 {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.diagnostic-grid > .workspace-panel {
+  margin: 0;
+  min-width: 0;
+}
+.diagnostic-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+.diagnostic-metric {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.diagnostic-metric strong {
+  font-size: 24px;
+}
+.diagnostic-note {
+  color: #835500;
+  background: #fff8e7;
+  padding: 12px;
+  border-radius: 8px;
+}
+.diagnostic-task {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.diagnostic-task .resource-main {
+  min-width: 0;
+  flex: 1 1 180px;
+  overflow-wrap: anywhere;
+}
+.diagnostic-task .resource-main > * {
+  display: block;
+}
+.diagnostic-hosts {
+  overflow-wrap: anywhere;
+}

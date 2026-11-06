@@ -2,12 +2,18 @@ from typing import Literal
 
 from pydantic import Field, SecretStr
 
-from app.domain.platform import Input, VersionInput
+from app.domain.platform import AgentInput, Input, VersionInput
 
 
 class DraftInput(VersionInput):
     profile_code: str = Field(default="", max_length=40)
     revision: int = Field(default=0, ge=0)
+
+
+class AgentConfigurationInput(Input):
+    agent: AgentInput
+    config: DraftInput
+    publish: bool = False
 
 
 class TurnInput(Input):

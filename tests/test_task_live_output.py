@@ -375,7 +375,7 @@ async def test_tool_phase_visible_and_next_model_call_resets_preview(client, db,
         await asyncio.wait_for(tool_started.wait(), 3)
         state = await task_stream.snapshot(db, PRINCIPAL, task["task_code"])
         assert state["preview"]["phase"] == {
-            "name": "执行工具",
+            "name": "实时工具",
             "type": "TOOL_CALL",
             "status": "RUNNING",
         }

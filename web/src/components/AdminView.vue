@@ -7,6 +7,7 @@ import MembersWorkspace from "./MembersWorkspace.vue";
 import TenantSettings from "./TenantSettings.vue";
 import UsersWorkspace from "./UsersWorkspace.vue";
 import RolesWorkspace from "./RolesWorkspace.vue";
+import SystemStatus from "./SystemStatus.vue";
 const props = defineProps<{ kind: string; code?: string }>();
 const { identity, busy, readonly, can, go, act, load } = useWorkspace();
 const rows = ref<Row[]>([]),
@@ -15,7 +16,6 @@ const rows = ref<Row[]>([]),
     { role_code: "TENANT_ADMIN", role_name: "租户管理员" },
   ]),
   permissions = ref<Record<string, string>>({}),
-  status = ref<Row>({}),
   search = ref(""),
   edit = ref(""),
   showForm = ref(false),
@@ -81,10 +81,6 @@ async function refresh() {
   if (!allowedPage.value) throw new Error("没有此页面的访问权限");
   if (props.kind === "tenant") {
     rows.value = identity.value?.tenants ?? [];
-    return;
-  }
-  if (props.kind === "integrations") {
-    status.value = await api<Row>("/api/v1/integration-status");
     return;
   }
   if (props.kind === "roles") {
@@ -191,9 +187,14 @@ watch([search, auditDays, auditActor], () => {
 });
 onMounted(
   () =>
-    !["resources", "members", "tenant", "users", "roles"].includes(
-      props.kind,
-    ) &&
+    ![
+      "resources",
+      "members",
+      "tenant",
+      "users",
+      "roles",
+      "integrations",
+    ].includes(props.kind) &&
     void act(
       async () => {
         if (props.kind === "audit")
@@ -215,6 +216,7 @@ onBeforeUnmount(() => {
   <TenantSettings v-else-if="kind === 'tenant'" />
   <UsersWorkspace v-else-if="kind === 'users'" :code="code" />
   <RolesWorkspace v-else-if="kind === 'roles'" />
+  <SystemStatus v-else-if="kind === 'integrations'" />
   <main v-else class="platform-main">
     <div class="page-heading">
       <div>
@@ -602,34 +604,6 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <p class="muted">审计记录不保存密码或密钥。</p>
-      </section>
-      <section v-else-if="kind === 'integrations'" class="workspace-panel">
-        <h2>内置账号</h2>
-        <p class="status-badge">
-          {{
-            status.accounts?.enabled
-              ? "账号密码登录已启用"
-              : "本地开发免登录模式"
-          }}
-        </p>
-        <p class="muted">用户、密码和登录会话由 Begin Agent 独立管理。</p>
-        <h2>PMS 运行适配</h2>
-        <p>
-          PMS 目录托管：{{
-            status.pms?.managed ? "已启用" : "本地运行，尚未登记托管"
-          }}
-        </p>
-        <p>
-          Worker：<span
-            class="status-badge"
-            :data-status="status.pms?.worker_ready ? 'SUCCEEDED' : 'FAILED'"
-            >{{ status.pms?.worker_ready ? "就绪" : "未就绪" }}</span
-          >
-        </p>
-        <h2>MCP 网络允许列表</h2>
-        <p class="muted">
-          {{ status.mcp_allowed_hosts?.join("、") || "尚未配置允许的服务主机" }}
-        </p>
       </section>
     </template>
   </main>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api, post } from "../api";
+import { mcpFailure } from "../integrationStatus";
 import {
   useWorkspace,
   mutate,
@@ -106,6 +107,19 @@ async function save() {
     else await read();
   }, "配置已保存；保存不代表外部接口已验证");
 }
+async function checkConnection() {
+  await act(async () => {
+    try {
+      await post(`/api/v1/mcps/${props.code}/check`, {});
+    } catch (error) {
+      // Read the persisted failed state as well; a previous success must not stay visible.
+      await Promise.allSettled([load(), read()]);
+      throw error;
+    }
+    await load();
+    await read();
+  }, "连接检测通过，工具目录已更新；实际工具调用请通过任务验收");
+}
 onMounted(() => void act(async () => read(), "", true));
 </script>
 <template>
@@ -199,6 +213,9 @@ onMounted(() => void act(async () => read(), "", true));
               >实现<select v-model="form.implementation">
                 <option value="text_stats">文本统计 · text_stats</option>
                 <option value="utc_now">UTC 时间 · utc_now</option>
+                <option value="export_text_file">
+                  生成文本文件 · export_text_file
+                </option>
               </select></label
             >
             <label
@@ -287,23 +304,26 @@ onMounted(() => void act(async () => read(), "", true));
             v-if="editable"
             class="secondary-button"
             :disabled="busy || !current.status"
-            @click="
-              act(async () => {
-                await post(`/api/v1/mcps/${code}/check`, {});
-                await load();
-                await read();
-              }, '连接检测通过，工具目录已更新')
-            "
+            @click="checkConnection"
           >
             检测连接
           </button>
         </div>
+        <p v-if="current.last_error" class="inline-error" role="alert">
+          最近检测未通过：{{ mcpFailure(current.last_error) }}
+          旧工具目录仅供参考，恢复检测前不能发布新版本。
+        </p>
         <p class="muted">
           {{
             current.checked_at
               ? "最近检测：" + date(current.checked_at)
-              : "尚未检测连接。保存配置不代表服务可用。"
+              : current.last_error
+                ? "当前没有有效的连接检测结果。"
+                : "尚未检测连接。保存配置不代表服务可用。"
           }}
+        </p>
+        <p v-if="current.checked_at" class="muted">
+          连接与工具发现已通过；不代表模型已实际调用这些工具。
         </p>
         <details
           v-for="t in current.tools"

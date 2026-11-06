@@ -1,11 +1,13 @@
+import asyncio
 import os
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.accounts import (
@@ -21,6 +23,7 @@ from app.core.credentials import CredentialCipher
 from app.core.identity import Principal, new_code
 from app.domain.platform import ToolInput, VersionInput
 from app.domain.workspace import (
+    AgentConfigurationInput,
     DebugInput,
     DraftInput,
     GrantInput,
@@ -56,6 +59,7 @@ from app.models.workspace import (
     TaskTurn,
 )
 from app.repositories.platform import database_session, public
+from app.services.configuration import agent_public, graph_lock, match, snapshot
 from app.services.conversations import append_turn, enqueue
 from app.services.permissions import (
     PERMISSIONS,
@@ -217,8 +221,67 @@ async def execution(code: str, p: Principal = P, session: AsyncSession = S):
 
 
 @workspace_router.get("/agents/{code}")
-async def agent_detail(code: str, p: Principal = P, session: AsyncSession = S):
-    return public(await (await scope(p, session)).get(Agent, "agent_code", code))
+async def agent_detail(code: str, response: Response, p: Principal = P, session: AsyncSession = S):
+    value = agent_public(await (await scope(p, session)).get(Agent, "agent_code", code))
+    response.headers["ETag"] = value["edit_etag"]
+    return value
+
+
+@workspace_router.get("/agents/{code}/configuration")
+async def agent_configuration(
+    code: str, response: Response, p: Principal = P, session: AsyncSession = S
+):
+    repo = await scope(p, session)
+    await graph_lock(session, p.tenant_code)
+    value = await snapshot(repo, code)
+    response.headers["ETag"] = value["etag"]
+    return value
+
+
+@workspace_router.put("/agents/{code}/configuration")
+async def save_agent_configuration(
+    code: str,
+    data: AgentConfigurationInput,
+    p: Principal = P,
+    session: AsyncSession = S,
+    if_match: str | None = Header(None),
+):
+    repo = await scope(p, session, permission="agents.manage", write=True)
+    if data.publish:
+        require(p, "agents.publish")
+    await graph_lock(session, p.tenant_code)
+    agent = await repo.get(Agent, "agent_code", code, lock=True)
+    current = await snapshot(repo, code, agent, include_versions=False)
+    match(if_match, current["etag"])
+    if current["draft"]["revision"] != data.config.revision:
+        raise HTTPException(412, "草稿已被其他操作更新，请重新加载后再保存")
+    from pydantic import ValidationError
+
+    try:
+        published_config = (
+            VersionInput.model_validate(data.config.model_dump(exclude={"revision"}))
+            if data.publish
+            else None
+        )
+    except ValidationError:
+        raise HTTPException(422, "发布配置缺少模型或有效参数") from None
+    for key, value in data.agent.model_dump().items():
+        setattr(agent, key, value)
+    row = await session.scalar(repo.query(AgentDraft).where(AgentDraft.agent_code == code))
+    if row is None:
+        row = AgentDraft(
+            tenant_code=p.tenant_code, draft_code=new_code("dft"), agent_code=code, revision=0
+        )
+        session.add(row)
+    row.config = data.config.model_dump(exclude={"revision"})
+    row.revision += 1
+    version = (
+        await AgentService(session, p.tenant_code).publish(code, published_config, commit=False)
+        if data.publish
+        else None
+    )
+    await session.commit()
+    return {"agent": agent_public(agent), "draft_revision": row.revision, "version": version}
 
 
 @workspace_router.get("/agents/{code}/draft")
@@ -249,9 +312,17 @@ async def save_draft(code: str, data: DraftInput, p: Principal = P, session: Asy
 
 
 @workspace_router.post("/agents/{code}/rollback")
-async def rollback(code: str, data: RollbackInput, p: Principal = P, session: AsyncSession = S):
+async def rollback(
+    code: str,
+    data: RollbackInput,
+    p: Principal = P,
+    session: AsyncSession = S,
+    if_match: str | None = Header(None),
+):
     repo = await scope(p, session, permission="agents.publish", write=True)
+    await graph_lock(session, p.tenant_code)
     agent = await repo.get(Agent, "agent_code", code, lock=True)
+    match(if_match, (await snapshot(repo, code, agent, include_versions=False))["etag"])
     version = await repo.get(AgentVersion, "version_code", data.version_code)
     if version.agent_code != code or version.status != "PUBLISHED":
         raise HTTPException(409, "只能回滚到本 Agent 已发布的历史版本")
@@ -461,7 +532,7 @@ async def save_mcp(data, p, session, code=None):
     )
     if code and row.endpoint != endpoint:
         # Credentials are origin-bound; moving a connection cannot silently reuse its secret.
-        row.token_ciphertext, row.tools, row.checked_at = None, [], None
+        row.token_ciphertext, row.tools, row.checked_at, row.last_error = None, [], None, None
     row.mcp_name, row.endpoint, row.status = data.mcp_name, endpoint, data.status
     if data.clear_token:
         row.token_ciphertext = None
@@ -470,7 +541,7 @@ async def save_mcp(data, p, session, code=None):
             data.token.get_secret_value()
         )
     if data.clear_token or data.token:
-        row.tools, row.checked_at = [], None
+        row.tools, row.checked_at, row.last_error = [], None, None
     session.add(row)
     await session.commit()
     return mcp_public(row)
@@ -497,8 +568,16 @@ async def check_mcp(code: str, p: Principal = P, session: AsyncSession = S):
     token = CredentialCipher(get_settings()).decrypt(credential) if credential else None
     try:
         catalog = await mcp_request(endpoint, token)
-    except (Exception, BaseExceptionGroup):
-        raise HTTPException(502, "MCP 连接或工具发现失败，请检查地址和凭据") from None
+    except Exception as exc:
+        from app.tools.errors import classify_mcp_error
+
+        error = classify_mcp_error(exc)
+        row = await repo.get(McpConnection, "mcp_code", code, lock=True)
+        if row.endpoint != endpoint or row.token_ciphertext != credential or row.status != 1:
+            raise HTTPException(409, "连接配置已变更，请重新检测") from None
+        row.checked_at, row.last_error = None, error.code
+        await session.commit()
+        raise HTTPException(502, str(error)) from None
     row = await repo.get(McpConnection, "mcp_code", code, lock=True)
     if row.endpoint != endpoint or row.token_ciphertext != credential or row.status != 1:
         raise HTTPException(409, "连接配置已变更，请重新检测")
@@ -795,13 +874,57 @@ async def audit(
 
 
 @workspace_router.get("/integration-status")
-async def integration_status(p: Principal = P):
-    require(p, "tenant.manage")
-    from app.workers.readiness import ready
+async def integration_status(p: Principal = P, session: AsyncSession = S):
+    await scope(p, session, permission="tenant.manage")
+    from app.services.diagnostics import database_snapshot, safe_queue_snapshot
+    from app.workers.readiness import inspect
 
     settings = get_settings()
+    workers = await asyncio.to_thread(inspect, settings)
+    database = await database_snapshot(session)
+    queue = (
+        await safe_queue_snapshot(session, p.tenant_code)
+        if allowed(p, "tasks.read")
+        else {"status": "forbidden"}
+    )
+    from app.services.operations import alerts_for, cluster_snapshot
+
+    cluster = await cluster_snapshot(session)
+    try:
+        alerts = await alerts_for(session, p, cluster, queue)
+        alert_status = "ready"
+    except (SQLAlchemyError, TimeoutError):
+        alerts, alert_status = [], "unavailable"
     return {
+        "cluster_workers": cluster,
+        "alerts": alerts,
+        "alert_status": alert_status,
+        "sampled_at": datetime.now(UTC),
+        "database": database,
+        "workers": workers,
+        "queue": queue,
         "accounts": {"enabled": settings.auth_mode == "password", "mode": settings.auth_mode},
-        "pms": {"managed": bool(os.environ.get("PMS_APP_HOME")), "worker_ready": ready(settings)},
+        "pms": {"managed": bool(os.environ.get("PMS_APP_HOME")), "worker_ready": workers["ready"]},
         "mcp_allowed_hosts": settings.mcp_allowed_hosts,
     }
+
+
+@workspace_router.post("/integration-status/alerts/{fingerprint}/ack")
+async def acknowledge_diagnostic(fingerprint: str, p: Principal = P, session: AsyncSession = S):
+    await scope(p, session, permission="tenant.manage", write=True)
+    current = await integration_status(p, session)
+    if not any(a["fingerprint"] == fingerprint for a in current["alerts"]):
+        raise HTTPException(409, "该告警样本已变化，请刷新状态后重试")
+    from app.models.workspace import DiagnosticAcknowledgment
+
+    await session.execute(
+        insert(DiagnosticAcknowledgment)
+        .values(
+            tenant_code=p.tenant_code,
+            user_code=p.user_code,
+            fingerprint=fingerprint,
+        )
+        .on_conflict_do_nothing(index_elements=["tenant_code", "user_code", "fingerprint"])
+    )
+    await session.commit()
+    return {"fingerprint": fingerprint, "acknowledged": True}

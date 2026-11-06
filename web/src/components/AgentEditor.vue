@@ -1,17 +1,152 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { api, post } from "../api";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { api, ApiError, post } from "../api";
+import {
+  creationFields,
+  startCreation,
+  keepCreation,
+  readCreation,
+  forgetCreation,
+  type PendingCreation,
+} from "../agentCreation";
+import {
+  storeWizard,
+  readWizard,
+  clearWizard,
+  type WizardDraft,
+} from "../wizardDraft";
 import VersionComparison from "./VersionComparison.vue";
 import CollaborationPanel from "./CollaborationPanel.vue";
+import EditConflict from "./EditConflict.vue";
 import { useWorkspace, label, date, type Row } from "../workspace";
 const props = defineProps<{ code: string; tab: string }>();
-const { data, busy, readonly, can, go, act, load } = useWorkspace();
+const { identity, data, busy, readonly, can, go, act, load } = useWorkspace();
 const agent = ref<Row>({ agent_name: "", agent_type: "NORMAL", status: 1 }),
   versions = ref<Row[]>([]),
   cases = ref<Row[]>([]),
   step = ref(1),
   revision = ref(0);
-const config = ref<Row>({
+const etag = ref(""),
+  conflict = ref(false),
+  refreshing = ref(false);
+let controller: AbortController | undefined;
+let reading = 0;
+let alive = true;
+let createdCode = "";
+const creation = ref<PendingCreation | null>(null),
+  restoredCreation = ref(false),
+  creationConfirmed = ref(false),
+  creationWarning = ref(""),
+  creationError = ref("");
+const offeredDraft = ref<WizardDraft | null>(null),
+  wizardWarning = ref("");
+let draftEnabled = false,
+  draftFinished = false;
+const draftScope = {
+  owner: identity.value?.user_code || "",
+  tenant: identity.value?.tenant_code || "",
+};
+function persistWizard() {
+  if (
+    props.code !== "new" ||
+    !draftEnabled ||
+    draftFinished ||
+    offeredDraft.value ||
+    !alive ||
+    identity.value?.user_code !== draftScope.owner ||
+    identity.value?.tenant_code !== draftScope.tenant
+  )
+    return;
+  if (!agent.value.agent_name?.trim() && !creation.value) return;
+  wizardWarning.value = storeWizard(
+    draftScope.owner,
+    draftScope.tenant,
+    agent.value as any,
+    config.value,
+    step.value,
+  );
+}
+function resumeWizard() {
+  const draft = offeredDraft.value;
+  if (!draft) return;
+  agent.value = { ...draft.agent };
+  config.value = { ...initialConfig(), ...draft.config };
+  step.value = draft.step;
+  restoredCreation.value = false;
+  offeredDraft.value = null;
+  draftEnabled = true;
+}
+function discardWizard() {
+  clearWizard(draftScope.owner, draftScope.tenant);
+  offeredDraft.value = null;
+  // An unresolved creation keeps its original identity and recovery panel.
+  agent.value = { agent_name: "", agent_type: "NORMAL", status: 1 };
+  config.value = initialConfig();
+  step.value = 1;
+  draftEnabled = true;
+}
+let recoveryController: AbortController | undefined;
+function sameCreationScope(value: PendingCreation) {
+  return (
+    alive &&
+    identity.value?.user_code === value.owner &&
+    identity.value?.tenant_code === value.tenant
+  );
+}
+function acceptCreation(value: Row, pending: PendingCreation) {
+  if (!sameCreationScope(pending))
+    throw new Error("页面已切换，请回到原工作空间找回创建结果");
+  createdCode = value.agent_code;
+  etag.value = value.configuration_etag;
+  creationConfirmed.value = true;
+  creationError.value = "";
+  if (restoredCreation.value) {
+    draftFinished = true;
+    clearWizard(draftScope.owner, draftScope.tenant);
+    forgetCreation(pending);
+    creation.value = null;
+    go("agents/" + createdCode + "/config");
+  } else agent.value = { ...value, ...creationFields(agent.value as any) };
+}
+async function recoverCreation(retry = false) {
+  const pending = creation.value;
+  if (!pending || busy.value || (retry && !editable.value)) return;
+  await act(
+    async () => {
+      creationError.value = "";
+      recoveryController?.abort();
+      const active = new AbortController();
+      recoveryController = active;
+      try {
+        const value = retry
+          ? await post<Row>("/api/v1/agents", pending.agent, "POST", {
+              headers: { "Idempotency-Key": pending.key },
+              signal: active.signal,
+            })
+          : await api<Row>(
+              "/api/v1/agents/creation-requests/" +
+                encodeURIComponent(pending.key),
+              { signal: active.signal },
+            );
+        if (!active.signal.aborted && sameCreationScope(pending))
+          acceptCreation(value, pending);
+      } catch (e) {
+        if (!active.signal.aborted && sameCreationScope(pending)) {
+          if (e instanceof ApiError && e.status === 404)
+            creationError.value =
+              "尚未找到已提交结果，当前状态仍未确认。可重试原创建请求。";
+          else {
+            creationError.value = "创建结果仍未确认，请保留原请求稍后重试。";
+            throw e;
+          }
+        }
+      }
+    },
+    "",
+    true,
+  );
+}
+const initialConfig = () => ({
   profile_code: "",
   system_prompt: "你是一位认真、可靠的助手，根据任务要求提供可核对的结果。",
   tool_codes: [],
@@ -27,6 +162,8 @@ const config = ref<Row>({
   },
   model_parameters: { thinking: "auto", max_tokens: 4096 },
 });
+const config = ref<Row>(initialConfig());
+watch([agent, config, step], persistWizard, { deep: true });
 const test = ref({
     case_name: "",
     prompt: "",
@@ -92,31 +229,50 @@ function toggleGroup(group: string) {
     : [...new Set([...config.value.tool_codes, ...codes])];
 }
 async function refresh() {
-  if (props.code === "new") {
+  if (props.code === "new" && !createdCode) {
     config.value.profile_code =
       data.value.models?.find(
         (p) => p.enabled && resourceReady("MODEL", p.profile_code),
       )?.profile_code ?? "";
     return;
   }
-  const [a, d, v, c] = await Promise.all([
-    api<Row>(`/api/v1/agents/${props.code}`),
-    api<Row>(`/api/v1/agents/${props.code}/draft`),
-    api<Row[]>(`/api/v1/agents/${props.code}/versions`),
-    api<Row[]>(`/api/v1/agents/${props.code}/test-cases`),
-  ]);
-  agent.value = a;
-  versions.value = v;
-  cases.value = c;
-  revision.value = d.revision;
-  if (d.config) config.value = { ...config.value, ...d.config };
-  else {
-    const published = v.find((v) => v.version_code === a.current_version_code);
-    if (published) fromVersion(published);
+  const request = ++reading;
+  const code = createdCode || props.code;
+  controller?.abort();
+  controller = new AbortController();
+  refreshing.value = true;
+  try {
+    const [current, c] = await Promise.all([
+      api<Row>(`/api/v1/agents/${code}/configuration`, {
+        signal: controller.signal,
+      }),
+      api<Row[]>(`/api/v1/agents/${code}/test-cases`, {
+        signal: controller.signal,
+      }),
+    ]);
+    if (!alive || request !== reading) return;
+    const { agent: a, draft: d, versions: v } = current;
+    agent.value = a;
+    versions.value = v;
+    cases.value = c;
+    revision.value = d.revision;
+    config.value = initialConfig();
+    if (d.config) config.value = { ...config.value, ...d.config };
+    else {
+      const published =
+        current.published ||
+        v.find((v: Row) => v.version_code === a.current_version_code);
+      if (published) fromVersion(published);
+    }
+    selectedVersion.value = a.current_version_code ?? "";
+    etag.value = current.etag;
+    conflict.value = false;
+  } finally {
+    if (alive && request === reading) refreshing.value = false;
   }
-  selectedVersion.value = a.current_version_code ?? "";
 }
 function fromVersion(v: Row) {
+  v = JSON.parse(JSON.stringify(v));
   const snap = v.dependency_snapshot;
   config.value = {
     ...config.value,
@@ -136,46 +292,77 @@ function fromVersion(v: Row) {
   };
 }
 async function save(publish = false) {
+  if (restoredCreation.value || offeredDraft.value) return;
+  if (conflict.value || refreshing.value || busy.value) return;
   if (
     (!editable.value && !publish) ||
     (props.code === "new" && !editable.value)
   )
     return;
+  if (props.code !== "new" && !etag.value) return false;
+  let saved = false;
   if (publish && (!can("agents.publish") || readonly.value)) return;
   await act(
     async () => {
-      let code = props.code;
-      if (code === "new") {
-        const a = await post<Row>("/api/v1/agents", agent.value);
-        code = a.agent_code;
-        agent.value = a;
-      } else if (editable.value)
-        await post(
-          `/api/v1/agents/${code}`,
-          {
-            agent_name: agent.value.agent_name,
-            agent_type: agent.value.agent_type,
-            status: agent.value.status,
-          },
-          "PATCH",
-        );
-      if (editable.value) {
-        const draft = await post<Row>(
-          `/api/v1/agents/${code}/draft`,
-          { ...config.value, revision: revision.value },
-          "PUT",
-        );
-        revision.value = draft.revision;
+      try {
+        let code = createdCode || props.code;
+        if (code === "new") {
+          const pending =
+            creation.value ||
+            startCreation(
+              identity.value?.user_code || "",
+              identity.value?.tenant_code || "",
+              creationFields(agent.value as any),
+            );
+          creation.value = pending;
+          creationWarning.value = keepCreation(pending);
+          persistWizard();
+          const a = await post<Row>("/api/v1/agents", pending.agent, "POST", {
+            headers: { "Idempotency-Key": pending.key },
+          });
+          acceptCreation(a, pending);
+          code = a.agent_code;
+        }
+        if (editable.value) {
+          const saved = await post<Row>(
+            `/api/v1/agents/${code}/configuration`,
+            {
+              agent: {
+                agent_name: agent.value.agent_name,
+                agent_type: agent.value.agent_type,
+                status: agent.value.status,
+              },
+              config: { ...config.value, revision: revision.value },
+              publish,
+            },
+            "PUT",
+            { headers: { "If-Match": etag.value } },
+          );
+          revision.value = saved.draft_revision;
+        } else if (publish)
+          await post(`/api/v1/agents/${code}/versions`, config.value, "POST", {
+            headers: { "If-Match": etag.value },
+          });
+        if (creation.value && !sameCreationScope(creation.value)) return;
+        await load();
+        if (props.code === "new") {
+          if (creation.value) forgetCreation(creation.value);
+          creation.value = null;
+          draftFinished = true;
+          clearWizard(draftScope.owner, draftScope.tenant);
+          go("agents/" + code + "/config");
+        } else await refresh();
+        saved = true;
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 412) conflict.value = true;
+        throw e;
       }
-      if (publish) await post(`/api/v1/agents/${code}/versions`, config.value);
-      await load();
-      if (props.code === "new") go("agents/" + code + "/config");
-      else await refresh();
     },
     publish
       ? "版本已发布，后续新任务使用此版本"
       : "草稿已保存，已发布版本保持原配置",
   );
+  return saved;
 }
 async function runDebug() {
   await act(async () => {
@@ -187,18 +374,77 @@ async function runDebug() {
     go("tasks/" + task.task_code);
   });
 }
-onMounted(() => void act(refresh, "", true));
+async function rollbackVersion(v: Row) {
+  if (conflict.value || refreshing.value || busy.value) return;
+  await act(async () => {
+    try {
+      await post(
+        `/api/v1/agents/${props.code}/rollback`,
+        { version_code: v.version_code },
+        "POST",
+        { headers: { "If-Match": etag.value } },
+      );
+      await refresh();
+      await load();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 412) conflict.value = true;
+      throw e;
+    }
+  }, "已切换当前版本");
+}
+async function copyVersion(v: Row) {
+  if (conflict.value || refreshing.value || busy.value) return;
+  fromVersion(v);
+  if (await save()) go("agents/" + props.code + "/config");
+}
+onMounted(() => {
+  if (
+    props.code === "new" &&
+    identity.value?.user_code &&
+    identity.value?.tenant_code
+  ) {
+    const recovered = readCreation(
+      identity.value.user_code,
+      identity.value.tenant_code,
+    );
+    creation.value = recovered.pending;
+    restoredCreation.value = !!recovered.pending;
+    creationWarning.value = recovered.warning;
+    const local = readWizard(draftScope.owner, draftScope.tenant);
+    offeredDraft.value = local.draft;
+    wizardWarning.value = local.warning;
+    draftEnabled = !local.draft;
+  }
+  void act(refresh, "", true);
+});
+onBeforeUnmount(() => {
+  persistWizard();
+  alive = false;
+  reading++;
+  controller?.abort();
+  recoveryController?.abort();
+});
 </script>
 <template>
   <main class="platform-main">
     <div class="page-heading">
       <div>
         <button class="text-button" @click="go('agents')">← Agent</button>
-        <h1>{{ code === "new" ? "创建 Agent" : agent.agent_name }}</h1>
+        <h1>
+          {{
+            code === "new"
+              ? restoredCreation
+                ? "恢复 Agent 创建"
+                : "创建 Agent"
+              : agent.agent_name
+          }}
+        </h1>
         <p class="muted">
           {{
             code === "new"
-              ? "三步配置一个可以执行任务的协作成员。"
+              ? restoredCreation
+                ? "找回上次创建结果，再继续配置。"
+                : "三步配置一个可以执行任务的协作成员。"
               : "草稿与发布版本分开保存，历史执行始终可以追溯。"
           }}
         </p>
@@ -210,7 +456,7 @@ onMounted(() => void act(refresh, "", true));
         ><button
           v-if="editable && tab === 'config'"
           class="secondary-button"
-          :disabled="busy"
+          :disabled="busy || refreshing || conflict"
           @click="save()"
         >
           保存草稿</button
@@ -218,7 +464,11 @@ onMounted(() => void act(refresh, "", true));
           v-if="can('agents.publish') && !readonly && tab === 'config'"
           class="primary-button"
           :disabled="
-            busy || !config.profile_code || !config.system_prompt.trim()
+            busy ||
+            refreshing ||
+            conflict ||
+            !config.profile_code ||
+            !config.system_prompt.trim()
           "
           @click="save(true)"
         >
@@ -226,6 +476,92 @@ onMounted(() => void act(refresh, "", true));
         </button>
       </div>
     </div>
+    <section v-if="offeredDraft" class="workspace-panel" role="status">
+      <h2>发现本标签页未保存的向导草稿</h2>
+      <p class="muted">
+        包含名称、提示词、模型与资源选择。仅在当前账号和工作空间恢复，24
+        小时内有效。
+      </p>
+      <div class="row-actions">
+        <button
+          class="primary-button"
+          :disabled="busy || !editable"
+          @click="resumeWizard"
+        >
+          继续编辑草稿</button
+        ><button
+          class="secondary-button"
+          :disabled="busy"
+          @click="discardWizard"
+        >
+          放弃本地草稿
+        </button>
+      </div>
+    </section>
+    <p v-if="code === 'new' && !offeredDraft" class="muted">
+      未保存的向导内容保留在本标签页 24
+      小时，包含提示词；关闭标签页后不保证恢复。
+    </p>
+    <p v-if="wizardWarning" class="inline-error" role="alert">
+      {{ wizardWarning }}
+    </p>
+    <section
+      v-if="code === 'new' && creation && !offeredDraft"
+      class="workspace-panel creation-recovery"
+      role="status"
+    >
+      <h2>
+        {{
+          creationConfirmed
+            ? "Agent 已创建，配置尚待保存"
+            : busy
+              ? "正在确认创建结果"
+              : "创建结果尚未确认"
+        }}
+      </h2>
+      <p class="code-text">原创建名称：{{ creation.agent.agent_name }}</p>
+      <p v-if="restoredCreation" class="muted">
+        恢复只找回原创建结果。请在配置页核对保存情况，未保存的编辑需要重新填写。
+      </p>
+      <p v-else class="muted">
+        重试会继续同一次创建，确认后再保存当前输入。离开或刷新后不保留本页输入。
+      </p>
+      <p v-if="creationError" class="inline-error" role="alert">
+        {{ creationError }}
+      </p>
+      <div class="row-actions">
+        <button
+          v-if="!creationConfirmed"
+          class="secondary-button"
+          :disabled="busy || !can('agents.manage')"
+          @click="recoverCreation()"
+        >
+          查询创建结果
+        </button>
+        <button
+          v-if="!creationConfirmed && restoredCreation"
+          class="primary-button"
+          :disabled="busy || !editable"
+          @click="recoverCreation(true)"
+        >
+          重试原创建请求
+        </button>
+        <button class="secondary-button" :disabled="busy" @click="go('agents')">
+          返回 Agent 列表
+        </button>
+      </div>
+      <p v-if="!restoredCreation && !creationConfirmed" class="muted">
+        也可以使用下方“保存草稿”，重试原创建并保存本页配置。
+      </p>
+    </section>
+    <p v-if="creationWarning" class="inline-error" role="alert">
+      {{ creationWarning }}
+    </p>
+    <EditConflict
+      v-if="conflict"
+      :disabled="busy || refreshing"
+      @reload="act(refresh, '', true)"
+    />
     <nav v-if="code !== 'new'" class="detail-tabs agent-tabs">
       <a
         v-for="[key, text] in [
@@ -241,7 +577,7 @@ onMounted(() => void act(refresh, "", true));
         >{{ text }}</a
       >
     </nav>
-    <nav v-else class="wizard-steps">
+    <nav v-else-if="!restoredCreation && !offeredDraft" class="wizard-steps">
       <span
         v-for="[no, text] in [
           [1, '基本信息'],
@@ -255,7 +591,11 @@ onMounted(() => void act(refresh, "", true));
       >
     </nav>
     <form
-      v-if="tab === 'config' || code === 'new'"
+      v-if="
+        (tab === 'config' || code === 'new') &&
+        !restoredCreation &&
+        !offeredDraft
+      "
       class="agent-config"
       @submit.prevent="code === 'new' && step < 3 ? step++ : save()"
     >
@@ -492,7 +832,7 @@ onMounted(() => void act(refresh, "", true));
           上一步</button
         ><button
           class="primary-button"
-          :disabled="busy || !agent.agent_name.trim()"
+          :disabled="busy || refreshing || conflict || !agent.agent_name.trim()"
         >
           {{ code === "new" && step < 3 ? "下一步 →" : "保存草稿" }}</button
         ><span class="muted">{{
@@ -573,19 +913,8 @@ onMounted(() => void act(refresh, "", true));
           <button
             v-if="editable"
             class="secondary-button"
-            :disabled="busy"
-            @click="
-              act(async () => {
-                fromVersion(v);
-                const draft = await post<Row>(
-                  `/api/v1/agents/${code}/draft`,
-                  { ...config, revision },
-                  'PUT',
-                );
-                revision = draft.revision;
-                go('agents/' + code + '/config');
-              }, '已复制到草稿')
-            "
+            :disabled="busy || refreshing || conflict"
+            @click="copyVersion(v)"
           >
             复制到草稿</button
           ><button
@@ -596,16 +925,8 @@ onMounted(() => void act(refresh, "", true));
               agent.current_version_code !== v.version_code
             "
             class="secondary-button"
-            :disabled="busy"
-            @click="
-              act(async () => {
-                await post(`/api/v1/agents/${code}/rollback`, {
-                  version_code: v.version_code,
-                });
-                await refresh();
-                await load();
-              }, '已切换当前版本')
-            "
+            :disabled="busy || refreshing || conflict"
+            @click="rollbackVersion(v)"
           >
             回滚到此版本
           </button>

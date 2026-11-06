@@ -2,7 +2,7 @@
 
 按设计继续完善的实现、验收与总结文章见 [分步实现目录](docs/implementation-steps/README.md)。
 
-面向企业内部的多租户 Agent 平台。第一版包含 独立账号密码登录、租户成员与角色、Agent 不可变版本、工具与子 Agent 授权、PostgreSQL 租约任务队列、Agent Loop、执行追踪及文本产物；保留 DeepSeek、智谱 GLM、MiniMax、Kimi 的普通及流式对话适配。PMS 部署协议见 [接入说明](docs/pms-sso-onboarding.md)，验收范围见 [第一版规格](docs/specs/feature-agent-v1.md)。
+面向企业内部的多租户 Agent 平台。第一版包含 独立账号密码登录、租户成员与角色、Agent 不可变版本、工具与子 Agent 授权、PostgreSQL 租约任务队列、Agent Loop、执行追踪、文本及文件产物（私有本地/S3 对象存储）；保留 DeepSeek、智谱 GLM、MiniMax、Kimi 的普通及流式对话适配。PMS 部署协议见 [接入说明](docs/pms-sso-onboarding.md)，验收范围见 [第一版规格](docs/specs/feature-agent-v1.md)。
 
 ## 本地运行
 
@@ -104,3 +104,17 @@ API 与 Worker 是独立后端进程。上述 Compose 用于本机开发；PMS/�
 - [数据模型设计](docs/multi-tenant-multi-agent-er-design.md)
 - [模型适配设计](docs/model-adapter-design.md)
 - [当前模型接入说明](docs/chat-model-integration-code-guide.md)
+
+文件产物支持成功任务追加人工上传文件、服务端分页及鉴权下载；默认单文件 20 MiB。本地目录与 S3 兼容后端配置、备份和失败补偿见 [文件存储运行说明](docs/pms-sso-onboarding.md#文件产物与私有对象存储第十四步)。
+
+真实模型与 MCP 的完整任务验收、安全运行诊断、独立 MCP 服务和只读验证脚本见 [第十五步说明](docs/implementation-steps/15-live-model-mcp.md)。
+
+页面拆包、按需候选目录及 SSE 快照性能基准见 [第十六步说明](docs/implementation-steps/16-performance-optimization.md)；快照微基准可通过 `python -m scripts.benchmark_task_stream` 在显式隔离数据库中执行。
+
+系统状态页提供数据库迁移、本机 Worker 心跳、当前租户队列与异常任务诊断；队列额外要求任务查看权限。采样范围、失败恢复及部署限制见 [第十七步说明](docs/implementation-steps/17-system-diagnostics.md)。
+
+Agent 配置支持元数据/草稿/可选发布的原子保存，以及多人编辑冲突恢复。元数据、协作、发布和回滚接口需携带当前 If-Match，缺失返回 428、过期返回 412；调用协议及向导恢复见 [第十八步说明](docs/implementation-steps/18-agent-concurrent-editing.md)。
+
+Agent 创建支持按账号与租户划分的 Idempotency-Key、结果查询与向导恢复，避免响应丢失后的重复创建。创建回执引入迁移 `20261106_07`（当前最新为 `20261106_08`）；协议、存储范围与迁移要求见 [第十九步说明](docs/implementation-steps/19-agent-creation-recovery.md)。
+
+第二十至二十五步已补齐向导完整草稿恢复、文本参考附件、执行生成文件、共享数据库 Worker 心跳与告警、备份恢复演练，以及离线包和部署预检。当前迁移 **20261106_08**；升级与角色授权见 [运行说明](docs/pms-sso-onboarding.md#第二十至二十五步运行要求)，各步实现、验证和独立文章见 [分步目录](docs/implementation-steps/README.md)。本机 Python 3.12/PostgreSQL 16 已验收；生产 Linux 和远程服务需另做目标环境验证。

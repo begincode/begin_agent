@@ -58,6 +58,9 @@ async function boot(
   const wrapper = mount(PlatformApp);
   wrappers.push(wrapper);
   await flushPromises();
+  await vi.waitFor(() =>
+    expect(wrapper.find("[data-page-loading]").exists()).toBe(false),
+  );
   return { wrapper, fetchMock };
 }
 it("offers independent login after session expiry and hides business pages", async () => {
@@ -136,7 +139,7 @@ it("disabled tenants retain views and hide creation and model calls", async () =
   expect(wrapper.text()).toContain("模型调用已停止");
   expect(wrapper.find("textarea").exists()).toBe(false);
 });
-it("switches tenant before fetching its catalog and clears previous route", async () => {
+it("switches tenant before fetching the overview and skips unrelated catalogs", async () => {
   let selected = "ten_a";
   const second = { ...tenant, tenant_code: "ten_b", tenant_name: "租户 B" };
   const { wrapper, fetchMock } = await boot(
@@ -149,10 +152,19 @@ it("switches tenant before fetching its catalog and clears previous route", asyn
   selected = "ten_b";
   await wrapper.get("#tenant-switch").setValue("ten_b");
   await flushPromises();
-  const call = (fetchMock.mock.calls as unknown as [string, RequestInit][])
-    .filter(([p]) => p === "/api/v1/agents")
+  await vi.waitFor(() =>
+    expect(fetchMock.mock.calls.some(([p]) => p === "/api/v1/overview")).toBe(
+      true,
+    ),
+  );
+  const overviewCall = (
+    fetchMock.mock.calls as unknown as [string, RequestInit][]
+  )
+    .filter(([p]) => p === "/api/v1/overview")
     .at(-1);
-  expect(new Headers(call?.[1].headers).get("X-Tenant-Code")).toBe("ten_b");
+  expect(new Headers(overviewCall?.[1].headers).get("X-Tenant-Code")).toBe(
+    "ten_b",
+  );
   expect(location.hash).toBe("#/overview");
 });
 it("persists sidebar collapse preference", async () => {
@@ -235,9 +247,11 @@ it("does not request a transient login page as business data after authenticatin
   expect(fetchMock.mock.calls.some(([path]) => path === "/api/v1/login")).toBe(
     false,
   );
-  expect(
-    fetchMock.mock.calls.some(([path]) => path === "/api/v1/overview"),
-  ).toBe(true);
+  await vi.waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(([path]) => path === "/api/v1/overview"),
+    ).toBe(true),
+  );
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
 });
 it("loads the authorization catalog past its first page", async () => {
@@ -246,10 +260,13 @@ it("loads the authorization catalog past its first page", async () => {
     resource_kind: "TOOL",
     available: true,
   }));
-  const { fetchMock } = await boot({
-    "/api/v1/resources": json(resources.slice(0, 50)),
-    "/api/v1/resources?limit=100&offset=50": json(resources.slice(50)),
-  });
+  const { fetchMock } = await boot(
+    {
+      "/api/v1/resources": json(resources.slice(0, 50)),
+      "/api/v1/resources?limit=100&offset=50": json(resources.slice(50)),
+    },
+    "agents/new",
+  );
   expect(
     fetchMock.mock.calls.some(
       ([p]) => p === "/api/v1/resources?limit=100&offset=50",
@@ -263,13 +280,99 @@ it("loads Agent candidates past the first page for collaboration", async () => {
     status: 1,
     current_version_code: "v_" + i,
   }));
-  const { fetchMock } = await boot({
-    "/api/v1/agents": json(agents.slice(0, 50)),
-    "/api/v1/agents?limit=100&offset=50": json(agents.slice(50)),
-  });
+  const { fetchMock } = await boot(
+    {
+      "/api/v1/agents": json(agents.slice(0, 50)),
+      "/api/v1/agents?limit=100&offset=50": json(agents.slice(50)),
+    },
+    "tasks/new",
+  );
   expect(
     fetchMock.mock.calls.some(
       ([p]) => p === "/api/v1/agents?limit=100&offset=50",
     ),
   ).toBe(true);
+});
+
+it("loads the overview without fetching editor catalogs", async () => {
+  const { wrapper, fetchMock } = await boot();
+  expect(wrapper.text()).toContain("让想法，开始执行。");
+  for (const kind of [
+    "agents",
+    "tasks",
+    "tools",
+    "mcps",
+    "skills",
+    "resources",
+    "model-profiles",
+  ])
+    expect(
+      fetchMock.mock.calls.some(([path]) => path === `/api/v1/${kind}`),
+    ).toBe(false);
+});
+it("discards and aborts a late catalog response when leaving its route", async () => {
+  let release!: (value: Response) => void;
+  const pending = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const { wrapper, fetchMock } = await boot();
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (path: string) =>
+    path === "/api/v1/agents" ? pending : original(path),
+  );
+  location.hash = "/tasks/new";
+  window.dispatchEvent(new Event("hashchange"));
+  await flushPromises();
+  const call = (
+    fetchMock.mock.calls as unknown as [string, RequestInit][]
+  ).find(([path]) => path === "/api/v1/agents")!;
+  expect(wrapper.text()).toContain("正在读取页面目录");
+  location.hash = "/overview";
+  window.dispatchEvent(new Event("hashchange"));
+  await flushPromises();
+  expect(call[1].signal?.aborted).toBe(true);
+  release(
+    json([
+      {
+        agent_code: "stale",
+        agent_name: "不应显示的旧助手",
+        status: 1,
+        current_version_code: "v1",
+      },
+    ]),
+  );
+  await flushPromises();
+  expect(wrapper.text()).toContain("让想法，开始执行。");
+  expect(wrapper.text()).not.toContain("不应显示的旧助手");
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+});
+it("offers a retry when a required catalog fails before mounting its task form", async () => {
+  let failing = true;
+  const { wrapper } = await boot(
+    {
+      "/api/v1/agents": () =>
+        failing
+          ? json({ detail: "候选读取失败" }, 503)
+          : json([
+              {
+                agent_code: "agt_ready",
+                agent_name: "可用候选",
+                status: 1,
+                current_version_code: "v1",
+              },
+            ]),
+    },
+    "tasks/new",
+  );
+  expect(wrapper.text()).toContain("页面目录暂不可用");
+  expect(wrapper.find("textarea").exists()).toBe(false);
+  failing = false;
+  await wrapper
+    .findAll("button")
+    .find((b) => b.text() === "重新读取目录")!
+    .trigger("click");
+  await vi.waitFor(() => expect(wrapper.text()).toContain("可用候选"));
+  expect(
+    (wrapper.get("select[required]").element as HTMLSelectElement).value,
+  ).toBe("agt_ready");
 });

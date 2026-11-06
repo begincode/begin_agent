@@ -11,6 +11,7 @@ from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
 from app.core.config import get_settings
+from app.tools.errors import McpRequestError, classify_mcp_error
 
 
 def validate_mcp_endpoint(endpoint):
@@ -48,11 +49,36 @@ def validate_schema(schema):
 
 async def mcp_request(endpoint, token=None, tool_name=None, arguments=None):
     validate_mcp_endpoint(endpoint)
+    observed = {}
+    try:
+        return await _request(endpoint, token, tool_name, arguments, observed)
+    except Exception as exc:
+        raise observed.get("failure") or classify_mcp_error(exc, observed.get("status")) from None
+
+
+async def _request(endpoint, token=None, tool_name=None, arguments=None, observed=None):
+    validate_mcp_endpoint(endpoint)
     headers = {"Authorization": "Bearer " + token} if token else {}
+    observed = observed if observed is not None else {}
+
+    class ObservedClient(httpx2.AsyncClient):
+        async def send(self, request, **kwargs):
+            try:
+                response = await super().send(request, **kwargs)
+            except (httpx2.TransportError, TimeoutError) as exc:
+                observed["failure"] = classify_mcp_error(exc)
+                raise
+            if request.method == "POST":
+                # SDK 2.x converts non-2xx responses into generic JSON-RPC errors.
+                # Keep only the latest numeric status, never a response body or headers.
+                observed["status"] = response.status_code
+                observed.pop("failure", None)
+            return response
+
     # SDK performs protocol negotiation and restricts cross-origin redirects.
     async with (
         asyncio.timeout(30),
-        httpx2.AsyncClient(
+        ObservedClient(
             headers=headers, timeout=httpx2.Timeout(10, read=25), trust_env=False
         ) as http,
     ):
@@ -61,13 +87,16 @@ async def mcp_request(endpoint, token=None, tool_name=None, arguments=None):
             if tool_name is not None:
                 result = await client.call_tool(tool_name, arguments or {})
                 if result.is_error:
-                    raise ValueError("MCP 工具执行失败")
+                    raise McpRequestError("MCP_TOOL_ERROR")
                 return result.model_dump(mode="json", exclude_none=True)
             tools, cursor = [], None
             for _ in range(10):
                 result = await client.list_tools(cursor=cursor)
                 for tool in result.tools:
-                    validate_schema(tool.input_schema)
+                    try:
+                        validate_schema(tool.input_schema)
+                    except Exception:
+                        raise McpRequestError("MCP_SCHEMA_INVALID") from None
                     tools.append(
                         {
                             "name": tool.name,

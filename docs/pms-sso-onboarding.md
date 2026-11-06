@@ -63,10 +63,75 @@ API 与 Worker 独立登记、独立启停；仓库和构建产物可复用。
 
 ## 数据库角色与执行语义
 
+系统状态页 `#/integrations` 提供数据库迁移、Worker 心跳分类和当前租户队列的手动采样；要求 `tenant.manage`，队列额外要求 `tasks.read`。Worker 心跳包含主机信息，兼容旧格式；只检查本机共享数据目录且可观察的 PID。不同主机或独立容器不能依靠 API 所在环境的 PID 判断远端 Worker，就绪命令应在 Worker 自身运行环境执行。最多扫描 256 条、每条 16KiB，超过上限会提示统计不完整。页面诊断不执行重试、恢复或外部通知。详见[第十七步运行诊断](implementation-steps/17-system-diagnostics.md)。
+
 生产使用迁移账号、API 账号、Worker 账号三个独立角色。迁移账号拥有 DDL；API 是非超级用户、NOBYPASSRLS，业务表有 FORCE RLS，事务开始设置可信的 `app.tenant_code`。API 不能使用迁移账号，否则生产启动拒绝。
 
 Worker 需要从全部租户任务中领取，使用独立非超级用户 BYPASSRLS 账号，权限只限所需表/序列；不能把这个 DSN 配给 API。租户、用户、成员目录承担授权入口，按服务端身份筛选；运行业务表使用租户过滤、复合外键和 RLS 三层保护。
 
 任务采用至少一次执行。租约令牌阻止旧 Worker 提交结果，模型调用不占数据库事务；模型请求可能在崩溃后重复。内置工具提供文本统计和 UTC 时间；MCP 使用官方 SDK 的 Streamable HTTP，服务器管理员通过 `AGENT_MCP_ALLOWED_HOSTS` 明确允许主机。服务检测发现工具后，在 Agent 版本中授权具体工具和参数 Schema。外部工具可能重复调用，接入有写入副作用的服务需要下游幂等保障。根任务预算限制整棵调用树，Run/Step/Message 记录具体过程；Token 用量缺失时采用保守字节估算。
 
-对象存储尚无指定接口，本版文本产物保存在 JSONB；不声称支持文件上传、独立向量库或工作流。
+文本产物保存在 JSONB；第十四步增加人工上传文件及私有本地/S3 对象存储，配置与限制见下文。独立向量库或工作流不在本版范围。
+
+## 文件产物与私有对象存储（第十四步）
+
+支持成功任务追加人工上传文件，默认单文件 20 MiB，服务器可通过 `AGENT_ARTIFACT_MAX_FILE_BYTES` 调整至最多 100 MiB。文件不是模型输入附件，不自动加入对话上下文。文本产物继续使用既有 JSONB；文件仅保存元数据和私有对象引用，同样受不可变触发器约束。
+
+默认 `AGENT_ARTIFACT_STORAGE_BACKEND=local`，对象目录为 `AGENT_DATA_DIR/objects`，本地开发未指定数据目录时为 `.data/objects`。可用 `AGENT_ARTIFACT_LOCAL_DIR` 指定版本目录之外的持久化绝对路径。对象目录不能映射为 Web 静态目录。多 API 实例须挂载同一持久卷，并使用相同运行账号；备份时同时保存 PostgreSQL、对象目录及已有凭据主密钥。
+
+S3 兼容后端配置：`AGENT_ARTIFACT_STORAGE_BACKEND=s3`、`AGENT_ARTIFACT_S3_BUCKET`、`AGENT_ARTIFACT_S3_REGION`，可选 `AGENT_ARTIFACT_S3_ENDPOINT`。非本地环境要求 HTTPS。外部配置可以提供 `AGENT_ARTIFACT_S3_ACCESS_KEY` / `AGENT_ARTIFACT_S3_SECRET_KEY` / 可选 `AGENT_ARTIFACT_S3_SESSION_TOKEN`，未提供时由官方 SDK 解析受控运行身份。桶须预先存在、禁止公开访问，账号仅授予指定桶前缀的 GetObject/PutObject/DeleteObject；DeleteObject 只用于失败补偿。服务器须支持 SigV4、路径式寻址和 If-None-Match 条件写入。本轮没有登记、创建或调用远程桶。
+
+对象键使用 `tenant/{tenantCode}/task/{taskCode}/{artifactCode}`，每个产物全新编码，文件名不参与路径计算。下载经应用权限校验与完整性检查后代理为附件，不返回存储端点、桶、对象键或预签名链接。上传与下载以临时文件中转，主机须为临时目录配置空间与访问权限；代理须允许相应请求体大小、上传最长 120 秒和下载时长，避免缓存下载响应。浏览器下载会先读取 Blob；当前适用于有限大小的交付文件，不提供分片、断点续传或内嵌预览。
+
+切换默认后端只影响新文件，旧文件按保存的后端读取。本地历史目录和 S3 历史桶配置需要保留；不要通过直接修改数据库里的不可变产物来迁移。更换桶或目录时须另做受控迁移方案。
+
+数据库与对象存储没有跨系统事务。数据库写入失败、任务变化、会话撤销和请求正常取消会补偿删除本次未挂接对象；提交回执不明且数据库不可用时保留对象，日志输出产物编码供核对。进程强制终止、网络错误回执不明仍可能留下孤儿对象。管理员须在停止写入或保留足够宽限期后，对照数据库 `task_artifact.content.storage` 的引用清单与对象清单核对，仅处理确认未引用的对象；不可按对象年龄直接删除，不可删除数据库仍引用的历史文件。自动清理与生命周期回收未包含在本步。
+
+## Agent 创建回执迁移（第十九步）
+
+新版本期望迁移 `20261106_07`，在停止 API/Worker 写入、备份数据库和既有凭据主密钥后，由迁移角色执行 `alembic upgrade head`。该版本新增 agent_creation_receipt（租户 FORCE RLS、唯一键、外键及不可变更新/删除约束），不改既有业务数据。API 运行角色补此表 SELECT、INSERT，以及生成 identity 所需序列 USAGE；使用实际角色名授权，不给 API DDL、BYPASSRLS 或超级用户。Worker 不需要写此表。迁移后启动 API/Worker，检查 `/readyz` 及 `python -m app.workers.readiness`。
+
+创建接口 Idempotency-Key 为可选；相同账号、租户、键及规范化内容返回原结果，首次 201、重放 200。同键不同内容 409；无键不提供创建去重保证。查询接口仍需 agents.manage，404 不代表原请求一定失败。调用方应保留原键重试，不能因超时自动换键。回执只保存原创建响应及摘要，不保存完整编辑草稿；向导刷新后不自动保存默认配置。
+
+回执无 TTL 或自动清理，禁止按年龄清除；删除或降级删表会使原请求失去去重依据。备份与恢复须同时覆盖回执和关联 Agent；恢复操作需另行核对数据一致性。本轮本地升级前的私有备份 `.data/local-run/before-step19.dump` 权限 0600，目录验证通过，未演练完整恢复。详细验证与边界见[第十九步说明](implementation-steps/19-agent-creation-recovery.md)。
+
+## 第二十至二十五步运行要求
+
+当前迁移为 **20261106_08**。新增 worker_pulse 和租户 FORCE RLS 的 diagnostic_acknowledgment。迁移后由受控账号按 `deploy/grant-runtime-roles.sql` 对明确命名的 API/Worker 角色授权；脚本不创建密码。API 为 NOSUPERUSER/NOBYPASSRLS；Worker 为独立 NOSUPERUSER/BYPASSRLS，读取迁移表，写任务、运行、轮次和数据库心跳。正式 Worker 启动发现迁移不匹配即失败。主密钥、数据与日志目录必须独立于 release。
+
+第二十步完整向导内容仅保留于按账号/租户划分的 sessionStorage，24 小时、128KiB；其中包含用户提示词，界面明确告知，模型密钥不保存。成功提交清除，关闭标签页或存储拒绝后离开页面不保证恢复。
+
+第二十一步输入附件仅支持最多三个 UTF-8 txt/md/csv/json，单个 32KiB，文本合计 30000 字符；保存在任务 JSONB 快照，模型读取参考材料，原始字节经任务权限下载。不是任意文档解析，也不执行文件代码。
+
+第二十二步 export_text_file 需作为工具显式授权到 Agent 发布版本；每次根任务最多三份文本文件，单个 32KiB。执行期间暂存，成功时私有对象元数据与任务状态原子提交；确认失败的对象补偿删除，提交不明且数据库不可用时保留对象供核对。生成文件与人工上传在页面区分。
+
+第二十三步数据库心跳每十秒上报、有效窗口 45 秒，覆盖同一数据库实例；不把活跃等同于模型或工具就绪。告警确认按账号/租户记录，新样本重新提示，不修复任务、不外发消息；队列仍要求 tasks.read。
+
+### 备份与恢复演练
+
+先停 API/Worker 写入，使用受控备份/迁移角色（不可使用租户 API DSN）。备份包含项目 public schema、本地对象和解密主密钥，目录 0700、文件 0600；必须按敏感资料保管，不上传公开目录。`AGENT_BACKUP_DATABASE_URL` 可通过受控配置提供备份角色；不要把含密码 DSN 放进命令行或日志。
+
+```bash
+python -m scripts.backup_restore backup /private/backup/new-bundle --writers-stopped --pg-bin /usr/bin
+python -m scripts.backup_restore verify /private/backup/new-bundle
+python -m scripts.backup_restore restore /private/backup/new-bundle \
+  --database begin_agent_restore_rehearsal --data-directory /private/restore/new-data --pg-bin /usr/bin
+python -m scripts.audit_objects --verify-content --output /private/reports/object-audit.json
+```
+
+恢复只允许本机全新限定前缀数据库和全新目录。恢复期间的 clean 只对刚创建的空库执行，已有库拒绝覆盖。核对工具不删除对象；达到上限、远程引用或损坏路径时明确标记未完成。含 S3 引用不接受此本地完整备份流程，必须配合桶版本、云端备份和数据库恢复点制定单独方案。完整恢复演练在隔离库完成，不代表生产回切。
+
+### 构建与预检
+
+```bash
+python -m scripts.build_pms --offline-deps
+python -m scripts.deployment_preflight --output /private/reports/preflight.json
+# 仅用于本机演练，Linux 差异会保留为非必需检查，不冒称 Linux 已验收
+python -m scripts.deployment_preflight --local-rehearsal --output /private/reports/preflight-local.json
+```
+
+离线包含 deploy 模板和 build-runtime.json，记录 OS/架构/Python 完整版本、迁移及锁定依赖摘要。必须在目标兼容环境构建；本轮的 macOS/arm64 wheelhouse 不能直接部署到 Linux。Linux/Python 3.12/PostgreSQL 16 的正式预检必须全部通过，随后仍需 HTTPS/代理前缀、持久化、备份和实际业务验收。
+
+PMS API 命令可调用 `sh deploy/pms/api.sh`，由平台提供 PMS_PYTHON、PMS_PORT、可选 PMS_ROOT_PATH；Worker 运行用 `sh deploy/pms/worker.sh run`，就绪用 `sh deploy/pms/worker.sh check`。仍需 PMS 配置支持命令式 Worker 检查，未对远程 PMS 登记或发布。
+
+本轮在本机真实 Python 3.12.13/PostgreSQL 16、独立非超级用户 API/Worker 角色下执行完整测试和离线包启动；Linux、远程云桶、外部业务 MCP 与正式 PMS 发布仍待环境。HTTP 压力工具仅接受 loopback、私有会话文件和有界读取，结果不能作为生产吞吐承诺。详见[第二十五步](implementation-steps/25-deployment-readiness.md)。

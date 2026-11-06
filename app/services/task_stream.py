@@ -7,13 +7,14 @@ import time
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.identity import tenant_context
 from app.models.platform import AgentRun, AgentTask
 from app.models.workspace import TaskTurn
 from app.services.permissions import allowed, require
+from app.services.snapshot_cache import SnapshotCache  # noqa: F401
 
 POLL_SECONDS = 0.3
 REAUTH_SECONDS = 1.5
@@ -37,24 +38,47 @@ async def snapshot(factory, principal, code):
     try:
         async with factory() as session:
             repo = await scope(principal, session)
-            task = await repo.get(AgentTask, "task_code", code)
-            turn = await session.scalar(
+            latest_turn = (
                 repo.query(TaskTurn)
+                .with_only_columns(TaskTurn.turn_no)
                 .where(TaskTurn.task_code == code)
                 .order_by(TaskTurn.turn_no.desc())
                 .limit(1)
+                .scalar_subquery()
             )
-            turn_no = turn.turn_no if turn else 1
-            run = await session.scalar(
-                repo.query(AgentRun)
-                .where(
-                    AgentRun.task_code == code,
-                    AgentRun.turn_no == turn_no,
-                    AgentRun.parent_run_code.is_(None),
+            task = (
+                await session.execute(
+                    repo.query(AgentTask)
+                    .with_only_columns(
+                        AgentTask.status,
+                        AgentTask.lease_token,
+                        AgentTask.retry_count,
+                        AgentTask.error_code,
+                        func.coalesce(latest_turn, 1).label("turn_no"),
+                    )
+                    .where(AgentTask.task_code == code)
                 )
-                .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
-                .limit(1)
-            )
+            ).first()
+            if task is None:
+                raise HTTPException(404, "记录不存在")
+            turn_no = task.turn_no
+            run = (
+                await session.execute(
+                    repo.query(AgentRun)
+                    .with_only_columns(
+                        AgentRun.run_code,
+                        AgentRun.lease_token,
+                        AgentRun.output["live"].label("preview"),
+                    )
+                    .where(
+                        AgentRun.task_code == code,
+                        AgentRun.turn_no == turn_no,
+                        AgentRun.parent_run_code.is_(None),
+                    )
+                    .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+                    .limit(1)
+                )
+            ).first()
             if task.status == "PENDING" or (
                 task.status == "RUNNING" and run and run.lease_token != task.lease_token
             ):
@@ -93,7 +117,7 @@ async def snapshot(factory, principal, code):
                 "retry_count": task.retry_count,
                 "error_code": task.error_code,
                 "run_code": run.run_code if run else None,
-                "preview": (run.output or {}).get("live") if run else None,
+                "preview": run.preview if run else None,
                 "activity": activity,
                 "terminal": task.status not in {"PENDING", "RUNNING"},
             }
@@ -139,7 +163,13 @@ async def events(request, factory, principal, code, initial):
                 last_auth = now
             # Re-read after revalidation so revoked trace privileges cannot leak activity.
             if previous is not None:
-                value = await snapshot(factory, principal, code)
+                state = getattr(getattr(request, "app", None), "state", None)
+                cache = getattr(state, "task_snapshots", None)
+                value = await (
+                    cache.get(factory, principal, code)
+                    if cache
+                    else snapshot(factory, principal, code)
+                )
             if value["revision"] != previous:
                 yield frame("snapshot", value, value["revision"])
                 previous = value["revision"]

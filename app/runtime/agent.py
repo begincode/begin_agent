@@ -20,7 +20,15 @@ from app.model_gateway.domain.chat import (
 )
 from app.model_gateway.errors import ProviderRequestError
 from app.model_gateway.gateway import ModelGateway
-from app.models.platform import Agent, AgentRun, AgentVersion, RunMessage, RunStep, TaskArtifact
+from app.models.platform import (
+    Agent,
+    AgentRun,
+    AgentTask,
+    AgentVersion,
+    RunMessage,
+    RunStep,
+    TaskArtifact,
+)
 from app.models.workspace import TaskTurn
 from app.repositories.platform import TenantRepository
 from app.repositories.task_queue import LeaseLost
@@ -28,6 +36,7 @@ from app.runtime.progress import RunProgress
 from app.services.model_profiles import ModelProfileService
 from app.services.resources import require_resource
 from app.tools.builtins import execute
+from app.tools.errors import McpRequestError
 from app.tools.mcp import mcp_request
 
 
@@ -67,6 +76,37 @@ def redact(value, secrets=()):
     return value
 
 
+def safe_request_id(value, secrets=()):
+    if (
+        isinstance(value, str)
+        and re.fullmatch(r"[A-Za-z0-9._:-]{1,256}", value)
+        and redact(value, secrets) == value
+    ):
+        return value
+    return None
+
+
+def model_diagnostic(error):
+    known = {
+        "AUTH_FAILED",
+        "QUOTA_EXCEEDED",
+        "RATE_LIMITED",
+        "MODEL_UNAVAILABLE",
+        "INVALID_REQUEST",
+        "INVALID_RESPONSE",
+        "INVALID_ENDPOINT",
+        "TIMEOUT",
+        "NETWORK_ERROR",
+        "CONTEXT_LENGTH_EXCEEDED",
+        "PROVIDER_ERROR",
+    }
+    return {
+        "diagnostic_code": error.code if error.code in known else "PROVIDER_ERROR",
+        "http_status": error.status_code if type(error.status_code) is int else None,
+        "retryable": error.retryable,
+    }
+
+
 @dataclass
 class Budget:
     remaining: int
@@ -74,6 +114,7 @@ class Budget:
     max_depth: int
     calls: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    files: list = field(default_factory=list)
 
     async def reserve(self, prompt_tokens, wanted):
         async with self.lock:
@@ -157,6 +198,13 @@ class AgentRuntime:
                     .limit(20)
                 )
             ).all()
+            task = await TenantRepository(session, lease.tenant_code).get(
+                AgentTask, "task_code", lease.task_code
+            )
+            attachments = task.input.get("attachments", [])
+        from app.services.task_inputs import reference_prompt
+
+        prompt = reference_prompt(lease.prompt, attachments)
         history = []
         for turn in reversed(turns):
             history += [
@@ -167,9 +215,7 @@ class AgentRuntime:
             ]
         try:
             async with asyncio.timeout(config["timeout_seconds"]):
-                output, run_code = await self.run(
-                    lease, version, lease.prompt, budget, history=history
-                )
+                output, run_code = await self.run(lease, version, prompt, budget, history=history)
                 await self.queue.write(
                     lease,
                     TaskArtifact(
@@ -182,7 +228,11 @@ class AgentRuntime:
                         version_no=lease.turn_no,
                     ),
                 )
-                return {"text": output, "run_code": run_code}
+                return {
+                    "text": output,
+                    "run_code": run_code,
+                    **({"_generated_files": budget.files} if budget.files else {}),
+                }
         except TimeoutError as exc:
             raise RuntimeFailure("TIMEOUT") from exc
 
@@ -412,6 +462,11 @@ class AgentRuntime:
                     tools=definitions,
                     **parameters,
                 )
+                model_input = {
+                    "model": provider.default_model,
+                    "provider_code": provider.code.value,
+                    "profile_code": version.profile_code,
+                }
                 try:
                     await progress.begin_model()
                     if not hasattr(self.gateway, "stream"):
@@ -425,8 +480,8 @@ class AgentRuntime:
                     await step(
                         "MODEL_CALL",
                         "调用模型",
-                        {"model": provider.default_model},
-                        {},
+                        model_input,
+                        model_diagnostic(exc),
                         "MODEL_FAILED",
                     )
                     raise RuntimeFailure(
@@ -441,8 +496,15 @@ class AgentRuntime:
                 step_code = await step(
                     "MODEL_CALL",
                     "调用模型",
-                    {"model": provider.default_model},
-                    {"finish_reason": response.finish_reason, "usage": response.usage},
+                    model_input,
+                    {
+                        "finish_reason": response.finish_reason,
+                        "usage": response.usage,
+                        "provider_request_id": safe_request_id(
+                            response.provider_request_id,
+                            secret_values,
+                        ),
+                    },
                 )
                 messages.append(response.message)
                 await message(response.message, step_code)
@@ -458,7 +520,27 @@ class AgentRuntime:
                     return output, run_code
                 for call in calls:
                     name = call.function.name
-                    await progress.stage("TOOL_CALL", "执行工具")
+                    display_name, source = name, {"alias": name}
+                    if name in mcp_map:
+                        connector, tool = mcp_map[name]
+                        display_name = connector["mcp_name"] + " · " + tool["name"]
+                        source.update(
+                            {
+                                "kind": "MCP",
+                                "mcp_code": connector["mcp_code"],
+                                "tool_name": tool["name"],
+                            }
+                        )
+                    elif name in tool_map:
+                        display_name = tool_map[name]["tool_name"]
+                        source.update({"kind": "BUILTIN", "tool_code": tool_map[name]["tool_code"]})
+                    elif name in child_map:
+                        display_name = child_map[name]["agent_name"]
+                        source.update(
+                            {"kind": "AGENT", "agent_code": child_map[name]["agent_code"]}
+                        )
+                    display_name = display_name[:128]
+                    await progress.stage("TOOL_CALL", display_name)
                     try:
                         arguments = json.loads(call.function.arguments)
                         if not isinstance(arguments, dict):
@@ -500,12 +582,9 @@ class AgentRuntime:
                                 )
                             if token:
                                 secret_values.append(token)
-                            try:
-                                result = await mcp_request(
-                                    connector["endpoint"], token, tool["name"], arguments
-                                )
-                            except Exception:
-                                raise ValueError("MCP tool execution failed") from None
+                            result = await mcp_request(
+                                connector["endpoint"], token, tool["name"], arguments
+                            )
                         else:
                             raise ValueError("unauthorized tool")
                     except (
@@ -517,14 +596,48 @@ class AgentRuntime:
                     ) as exc:
                         await step(
                             "TOOL_CALL",
-                            name,
-                            {"arguments": call.function.arguments},
-                            {},
+                            display_name,
+                            {"arguments": call.function.arguments, "source": source},
+                            {"diagnostic_code": exc.code}
+                            if isinstance(exc, McpRequestError)
+                            else {},
                             "TOOL_FAILED",
                         )
                         raise RuntimeFailure("TOOL_FAILED") from exc
                     result = redact(result, secret_values)
-                    tool_step = await step("TOOL_CALL", name, arguments, result)
+                    if (
+                        name in tool_map
+                        and tool_map[name]["connection_config"]["implementation"]
+                        == "export_text_file"
+                    ):
+                        file = result["generated_file"]
+                        # Redact text before encoding; Base64 is not a redaction boundary.
+                        import base64
+
+                        raw = redact(file["text"], secret_values).encode()
+                        file = {
+                            **file,
+                            "text": raw.decode(),
+                            "content_base64": base64.b64encode(raw).decode(),
+                            "size_bytes": len(raw),
+                            "sha256": hashlib.sha256(raw).hexdigest(),
+                        }
+                        async with budget.lock:
+                            if len(budget.files) >= 3:
+                                raise RuntimeFailure("FILE_LIMIT_EXCEEDED")
+                            budget.files.append({**file, "run_code": run_code})
+                        result = {
+                            "file_name": file["file_name"],
+                            "size_bytes": file["size_bytes"],
+                            "sha256": file["sha256"],
+                            "status": "STAGED_UNTIL_TASK_SUCCEEDS",
+                        }
+                    tool_step = await step(
+                        "TOOL_CALL",
+                        display_name,
+                        {**arguments, "source": source},
+                        result,
+                    )
                     item = ChatMessage(
                         role="tool",
                         content=json.dumps(result, ensure_ascii=False),

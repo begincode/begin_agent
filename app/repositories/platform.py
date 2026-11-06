@@ -42,9 +42,14 @@ class TenantRepository:
 
 
 def public(row):
-    return {
+    value = {
         column.key: getattr(row, column.key)
         for column in row.__table__.columns
         if column.key not in {"id", "lease_token", "metadata", "password_hash"}
         and not column.key.endswith("ciphertext")
     }
+    if row.__tablename__ == "agent_task":
+        from app.services.task_inputs import public_input
+
+        value["input"] = public_input(value["input"])
+    return value

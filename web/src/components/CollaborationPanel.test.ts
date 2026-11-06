@@ -26,7 +26,9 @@ function setup(manage = true) {
       return new Response(JSON.stringify(row));
     }
     if (options.method === "POST") return new Response("{}");
-    return new Response(JSON.stringify([row]));
+    return new Response(JSON.stringify([row]), {
+      headers: { ETag: '"relations"' },
+    });
   });
   vi.stubGlobal("fetch", fetchMock);
   const state: Workspace = {

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,14 @@ from app.models.platform import (
 )
 from app.models.workspace import RoleDefinition, TaskTurn
 from app.repositories.platform import TenantRepository, database_session, public
+from app.services.configuration import (
+    agent_public,
+    graph_lock,
+    match,
+    metadata,
+    relation_snapshot,
+    tag,
+)
 from app.services.permissions import MEMBER_PERMISSIONS, allowed, effective_permissions
 from app.services.platform import AgentService
 from app.tools.builtins import CATALOG
@@ -295,7 +303,7 @@ async def agents(
     if status is not None:
         query = query.where(Agent.status == status)
     return [
-        public(r)
+        agent_public(r)
         for r in (
             await session.scalars(
                 query.order_by(Agent.created_at.desc(), Agent.agent_code.desc())
@@ -307,24 +315,50 @@ async def agents(
 
 
 @platform_router.post("/agents", status_code=201)
-async def create_agent(data: AgentInput, p: Principal = Identity, session: AsyncSession = Session):
+async def create_agent(
+    data: AgentInput,
+    response: Response,
+    p: Principal = Identity,
+    session: AsyncSession = Session,
+    idempotency_key: str | None = Header(None),
+):
     await scope(p, session, permission="agents.manage", write=True)
-    row = Agent(tenant_code=p.tenant_code, agent_code=new_code("agt"), **data.model_dump())
-    session.add(row)
-    await session.commit()
-    return public(row)
+    from app.services.agent_creation import create
+
+    result, replayed = await create(session, p, data, idempotency_key)
+    response.status_code = 200 if replayed else 201
+    response.headers["Idempotency-Replayed"] = "true" if replayed else "false"
+    return result
+
+
+@platform_router.get("/agents/creation-requests/{key}")
+async def recover_agent_creation(
+    key: str, p: Principal = Identity, session: AsyncSession = Session
+):
+    await scope(p, session, permission="agents.manage")
+    from app.services.agent_creation import lookup
+
+    receipt = await lookup(session, p, key)
+    if receipt is None:
+        raise HTTPException(404, "尚未找到已提交的创建结果，请保留原请求并重试")
+    return receipt.result
 
 
 @platform_router.patch("/agents/{code}")
 async def edit_agent(
-    code: str, data: AgentInput, p: Principal = Identity, session: AsyncSession = Session
+    code: str,
+    data: AgentInput,
+    p: Principal = Identity,
+    session: AsyncSession = Session,
+    if_match: str | None = Header(None),
 ):
     repo = await scope(p, session, permission="agents.manage", write=True)
     row = await repo.get(Agent, "agent_code", code, lock=True)
+    match(if_match, tag(metadata(row)))
     for key, value in data.model_dump().items():
         setattr(row, key, value)
     await session.commit()
-    return public(row)
+    return agent_public(row)
 
 
 @platform_router.get("/agents/{code}/versions")
@@ -336,55 +370,40 @@ async def versions(code: str, p: Principal = Identity, session: AsyncSession = S
 
 @platform_router.post("/agents/{code}/versions", status_code=201)
 async def publish(
-    code: str, data: VersionInput, p: Principal = Identity, session: AsyncSession = Session
+    code: str,
+    data: VersionInput,
+    p: Principal = Identity,
+    session: AsyncSession = Session,
+    if_match: str | None = Header(None),
 ):
     await scope(p, session, permission="agents.publish", write=True)
-    return await AgentService(session, p.tenant_code).publish(code, data)
+    return await AgentService(session, p.tenant_code).publish(
+        code, data, expected=if_match, conditional=True
+    )
 
 
 @platform_router.get("/agents/{code}/relations")
-async def relations(code: str, p: Principal = Identity, session: AsyncSession = Session):
+async def relations(
+    code: str, response: Response, p: Principal = Identity, session: AsyncSession = Session
+):
     repo = await scope(p, session)
+    await graph_lock(session, p.tenant_code)
     await repo.get(Agent, "agent_code", code)
-    rows = (
-        await session.execute(
-            repo.query(AgentRelation)
-            .join(
-                Agent,
-                (Agent.agent_code == AgentRelation.sub_agent_code)
-                & (Agent.tenant_code == AgentRelation.tenant_code),
-            )
-            .outerjoin(
-                AgentVersion,
-                (AgentVersion.version_code == Agent.current_version_code)
-                & (AgentVersion.tenant_code == Agent.tenant_code),
-            )
-            .add_columns(
-                Agent.agent_name, Agent.status, Agent.current_version_code, AgentVersion.version_no
-            )
-            .where(AgentRelation.master_agent_code == code)
-            .order_by(AgentRelation.created_at, AgentRelation.relation_code)
-            .limit(1000)
-        )
-    ).all()
-    return [
-        {
-            **public(r),
-            "sub_agent_name": name,
-            "sub_agent_status": status,
-            "sub_agent_version_code": version,
-            "sub_agent_version_no": number,
-        }
-        for r, name, status, version, number in rows
-    ]
+    rows = await relation_snapshot(repo, code)
+    response.headers["ETag"] = tag(rows)
+    return rows
 
 
 @platform_router.post("/agents/{code}/relations", status_code=201)
 async def relate(
-    code: str, data: RelationInput, p: Principal = Identity, session: AsyncSession = Session
+    code: str,
+    data: RelationInput,
+    p: Principal = Identity,
+    session: AsyncSession = Session,
+    if_match: str | None = Header(None),
 ):
     await scope(p, session, permission="agents.manage", write=True)
-    return await AgentService(session, p.tenant_code).relate(code, data)
+    return await AgentService(session, p.tenant_code).relate(code, data, expected=if_match)
 
 
 @platform_router.patch("/agents/{code}/relations/{relation_code}")
@@ -394,20 +413,26 @@ async def edit_relation(
     data: RelationSettings,
     p: Principal = Identity,
     session: AsyncSession = Session,
+    if_match: str | None = Header(None),
 ):
     await scope(p, session, permission="agents.manage", write=True)
-    return await AgentService(session, p.tenant_code).relate(code, data, relation_code)
+    return await AgentService(session, p.tenant_code).relate(
+        code, data, relation_code, expected=if_match
+    )
 
 
 @platform_router.delete("/agents/{code}/relations/{relation_code}", status_code=204)
 async def unrelate(
-    code: str, relation_code: str, p: Principal = Identity, session: AsyncSession = Session
+    code: str,
+    relation_code: str,
+    p: Principal = Identity,
+    session: AsyncSession = Session,
+    if_match: str | None = Header(None),
 ):
     repo = await scope(p, session, permission="agents.manage", write=True)
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtextextended(:tenant, 0))"),
-        {"tenant": p.tenant_code},
-    )
+    await graph_lock(session, p.tenant_code)
+    await repo.get(Agent, "agent_code", code, lock=True)
+    match(if_match, tag(await relation_snapshot(repo, code)))
     row = await repo.get(AgentRelation, "relation_code", relation_code, lock=True)
     if row.master_agent_code != code:
         raise HTTPException(404, "关系不存在")
@@ -503,13 +528,16 @@ async def create_task(data: TaskInput, p: Principal = Identity, session: AsyncSe
     agent = await repo.get(Agent, "agent_code", data.agent_code)
     if agent.status != 1 or not agent.current_version_code:
         raise HTTPException(409, "Agent 未启用或未发布版本")
+    from app.services.task_inputs import parse_files
+
+    attachments = parse_files(data.attachments)
     values = dict(
         tenant_code=p.tenant_code,
         task_code=new_code("tsk"),
         agent_code=agent.agent_code,
         agent_version_code=agent.current_version_code,
         title=data.title,
-        input={"prompt": data.prompt},
+        input={"prompt": data.prompt, **({"attachments": attachments} if attachments else {})},
         created_by=p.user_code,
         idempotency_key=data.idempotency_key,
         priority=data.priority,
@@ -528,7 +556,8 @@ async def create_task(data: TaskInput, p: Principal = Identity, session: AsyncSe
             repo.query(AgentTask).where(AgentTask.idempotency_key == data.idempotency_key)
         )
         if (
-            row.agent_code != data.agent_code
+            row.input.get("attachments", []) != attachments
+            or row.agent_code != data.agent_code
             or row.input.get("initial_prompt", row.input["prompt"]) != data.prompt
             or row.title != data.title
             or row.priority != data.priority
@@ -552,8 +581,15 @@ async def create_task(data: TaskInput, p: Principal = Identity, session: AsyncSe
 
 @platform_router.get("/tasks/{code}")
 async def task_detail(code: str, p: Principal = Identity, session: AsyncSession = Session):
+    from app.services.artifacts import artifact_public
+
     repo = await scope(p, session)
     row = await repo.get(AgentTask, "task_code", code)
+    agent_name = await session.scalar(
+        repo.query(Agent)
+        .with_only_columns(Agent.agent_name)
+        .where(Agent.agent_code == row.agent_code)
+    )
     runs = (
         (
             await session.scalars(
@@ -582,8 +618,9 @@ async def task_detail(code: str, p: Principal = Identity, session: AsyncSession 
         turn_views.append({**public(turn), "preview": preview})
     return {
         **public(row),
+        "agent_name": agent_name,
         "runs": [public(r) for r in runs],
-        "artifacts": [public(a) for a in artifacts],
+        "artifacts": [artifact_public(a) for a in artifacts],
         "turns": turn_views,
     }
 

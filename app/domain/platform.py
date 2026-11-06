@@ -74,10 +74,16 @@ class ToolInput(Input):
     status: Literal[0, 1] = 1
     tool_name: str = Field(min_length=1, max_length=128)
     group_name: str = Field(default="通用", min_length=1, max_length=64)
-    implementation: Literal["text_stats", "utc_now"]
+    implementation: Literal["text_stats", "utc_now", "export_text_file"]
+
+
+class TaskAttachment(Input):
+    file_name: str = Field(min_length=1, max_length=255)
+    content_base64: str = Field(min_length=1, max_length=43692)
 
 
 class TaskInput(Input):
+    attachments: list[TaskAttachment] = Field(default_factory=list, max_length=3)
     agent_code: str = Field(min_length=1, max_length=40)
     title: str = Field(min_length=1, max_length=200)
     prompt: str = Field(min_length=1, max_length=30000)

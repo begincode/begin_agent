@@ -3,6 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.chat import chat_router
+from app.db.schema import SCHEMA_REVISION
 from app.db.session import session_factory
 
 router = APIRouter()
@@ -19,7 +20,7 @@ async def readycheck() -> dict[str, str]:
     try:
         async with session_factory() as session:
             revision = await session.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "20261029_06":
+        if revision != SCHEMA_REVISION:
             raise HTTPException(503, "数据库迁移未就绪")
     except SQLAlchemyError as exc:
         raise HTTPException(503, "数据库未就绪") from exc

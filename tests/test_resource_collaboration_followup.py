@@ -1,7 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
 
-from test_platform_v1 import Gateway, configured_agent, post, queued
+from test_platform_v1 import Gateway, conditional, configured_agent, post, queued
 
 from app.core.identity import LOCAL_TENANT, new_code
 from app.models.platform import ToolDefinition
@@ -121,7 +121,9 @@ async def test_resource_reader_cannot_grant_and_sees_no_member_agent_counts(clie
     )
     auth.get_settings().auth_mode = "password"
     assert (
-        await client.post(
+        await conditional(
+            client,
+            "POST",
             "/api/v1/auth/login",
             json={"username": "catalogreader", "password": "catalogreader-password-2026"},
         )
@@ -154,11 +156,14 @@ async def test_relation_edit_snapshots_and_runtime_keep_original_child(client, d
     published = await post(client, f"/agents/{code}/versions", config)
     task = await queued(client, master)
     path = f"/api/v1/agents/{code}/relations/{relation['relation_code']}"
-    changed = await client.patch(
-        path, json={"call_mode": "ON_DEMAND", "timeout_seconds": 7, "enabled": False}
+    changed = await conditional(
+        client,
+        "PATCH",
+        path,
+        json={"call_mode": "ON_DEMAND", "timeout_seconds": 7, "enabled": False},
     )
     assert changed.status_code == 200 and not changed.json()["enabled"]
-    partial = await client.patch(path, json={"timeout_seconds": 11})
+    partial = await conditional(client, "PATCH", path, json={"timeout_seconds": 11})
     assert partial.status_code == 200 and partial.json()["enabled"] is False
     assert partial.json()["call_mode"] == "ON_DEMAND" and partial.json()["timeout_seconds"] == 11
     current = await post(client, f"/agents/{code}/versions", config)
@@ -192,8 +197,11 @@ async def test_relation_edit_snapshots_and_runtime_keep_original_child(client, d
     ]["children"][0]
     assert snapshot["timeout_seconds"] == 37 and snapshot["call_mode"] == "SERIAL"
     assert (
-        await client.patch(
-            path, json={"call_mode": "PARALLEL", "timeout_seconds": 5, "enabled": True}
+        await conditional(
+            client,
+            "PATCH",
+            path,
+            json={"call_mode": "PARALLEL", "timeout_seconds": 5, "enabled": True},
         )
     ).status_code == 200
     new = await post(client, f"/agents/{code}/versions", config)
@@ -208,21 +216,26 @@ async def test_relation_duplicates_reenable_cycles_and_concurrent_graph_changes(
     path = f"/api/v1/agents/{a}/relations/{relation['relation_code']}"
     await post(client, f"/agents/{a}/relations", {"sub_agent_code": b}, status=409)
     await post(client, f"/agents/{a}/relations", {"sub_agent_code": a}, status=409)
-    assert (await client.patch(path, json={"enabled": False})).status_code == 200
+    assert (await conditional(client, "PATCH", path, json={"enabled": False})).status_code == 200
     reverse = await post(client, f"/agents/{b}/relations", {"sub_agent_code": a})
-    assert (await client.patch(path, json={"enabled": True})).status_code == 409
+    assert (await conditional(client, "PATCH", path, json={"enabled": True})).status_code == 409
     assert (
-        await client.patch(
-            path, json={"enabled": False, "call_mode": "SERIAL", "timeout_seconds": 9}
+        await conditional(
+            client,
+            "PATCH",
+            path,
+            json={"enabled": False, "call_mode": "SERIAL", "timeout_seconds": 9},
         )
     ).status_code == 200
     assert (
-        await client.delete(f"/api/v1/agents/{b}/relations/{reverse['relation_code']}")
+        await conditional(
+            client, "DELETE", f"/api/v1/agents/{b}/relations/{reverse['relation_code']}"
+        )
     ).status_code == 204
-    assert (await client.patch(path, json={"enabled": True})).status_code == 200
+    assert (await conditional(client, "PATCH", path, json={"enabled": True})).status_code == 200
     results = await asyncio.gather(
-        client.post(f"/api/v1/agents/{b}/relations", json={"sub_agent_code": c}),
-        client.post(f"/api/v1/agents/{c}/relations", json={"sub_agent_code": a}),
+        conditional(client, "POST", f"/api/v1/agents/{b}/relations", json={"sub_agent_code": c}),
+        conditional(client, "POST", f"/api/v1/agents/{c}/relations", json={"sub_agent_code": a}),
     )
     assert sorted(r.status_code for r in results) == [201, 409]
     unpublished = await post(client, "/agents", {"agent_name": "尚未发布"})
@@ -231,8 +244,12 @@ async def test_relation_duplicates_reenable_cycles_and_concurrent_graph_changes(
     )
     other = await post(client, "/tenants", {"tenant_name": "协作隔离"})
     assert (
-        await client.patch(
-            path, json={"enabled": False}, headers={"X-Tenant-Code": other["tenant_code"]}
+        await conditional(
+            client,
+            "PATCH",
+            path,
+            json={"enabled": False},
+            headers={"X-Tenant-Code": other["tenant_code"]},
         )
     ).status_code == 404
 
@@ -262,7 +279,9 @@ async def test_collaboration_reader_cannot_edit(client):
     )
     auth.get_settings().auth_mode = "password"
     assert (
-        await client.post(
+        await conditional(
+            client,
+            "POST",
             "/api/v1/auth/login",
             json={"username": "collabreader", "password": "collabreader-password-2026"},
         )
@@ -270,5 +289,7 @@ async def test_collaboration_reader_cannot_edit(client):
     path = f"/api/v1/agents/{master['agent_code']}/relations"
     assert (await client.get(path)).json()[0]["sub_agent_name"] == "只读子助手"
     assert (
-        await client.patch(path + "/" + relation["relation_code"], json={"enabled": False})
+        await conditional(
+            client, "PATCH", path + "/" + relation["relation_code"], json={"enabled": False}
+        )
     ).status_code == 403

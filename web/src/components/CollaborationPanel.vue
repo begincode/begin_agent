@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { api, post } from "../api";
+import { api, ApiError, post, versioned } from "../api";
+import EditConflict from "./EditConflict.vue";
 import { useWorkspace, type Row } from "../workspace";
 const props = defineProps<{ code: string }>();
 const { data, busy, readonly, can, go, act } = useWorkspace();
@@ -8,6 +9,9 @@ const rows = ref<Row[]>([]),
   error = ref(""),
   loading = ref(false),
   editing = ref("");
+const etag = ref(""),
+  conflict = ref(false);
+let controller: AbortController | undefined;
 const initial = () => ({
   call_mode: "ON_DEMAND",
   timeout_seconds: 120,
@@ -32,16 +36,29 @@ const modes: Record<string, string> = {
 };
 let alive = true,
   requestNumber = 0;
-async function refresh() {
+async function refresh(discard = false) {
   const request = ++requestNumber;
+  controller?.abort();
+  controller = new AbortController();
   loading.value = true;
   try {
-    const value = await api<Row[]>(`/api/v1/agents/${props.code}/relations`);
+    const value = await versioned<Row[]>(
+      `/api/v1/agents/${props.code}/relations`,
+      {
+        signal: controller.signal,
+      },
+    );
     if (!alive || request !== requestNumber) return;
-    rows.value = value;
+    rows.value = value.data;
+    etag.value = value.etag;
+    if (discard) {
+      editing.value = "";
+      addition.value = { sub_agent_code: "", ...initial() };
+      conflict.value = false;
+    }
     error.value = "";
   } catch (e) {
-    if (alive && request === requestNumber)
+    if (alive && request === requestNumber && !controller?.signal.aborted)
       error.value = e instanceof Error ? e.message : "协作配置暂不可用";
   } finally {
     if (alive && request === requestNumber) loading.value = false;
@@ -56,27 +73,52 @@ function start(row: Row) {
   };
 }
 async function save() {
-  if (!editable.value || busy.value) return;
+  if (!editable.value || busy.value || loading.value || conflict.value) return;
   await act(async () => {
-    if (editing.value)
-      await post(
-        `/api/v1/agents/${props.code}/relations/${editing.value}`,
-        settings.value,
-        "PATCH",
-      );
-    else await post(`/api/v1/agents/${props.code}/relations`, addition.value);
-    editing.value = "";
-    addition.value = { sub_agent_code: "", ...initial() };
-    await refresh();
+    try {
+      if (editing.value)
+        await post(
+          `/api/v1/agents/${props.code}/relations/${editing.value}`,
+          settings.value,
+          "PATCH",
+          { headers: { "If-Match": etag.value } },
+        );
+      else
+        await post(
+          `/api/v1/agents/${props.code}/relations`,
+          addition.value,
+          "POST",
+          { headers: { "If-Match": etag.value } },
+        );
+      editing.value = "";
+      addition.value = { sub_agent_code: "", ...initial() };
+      await refresh();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 412) conflict.value = true;
+      throw e;
+    }
   }, "协作配置已保存，重新发布主 Agent 后生效");
 }
 async function remove(row: Row) {
-  if (!editable.value || busy.value || editing.value) return;
+  if (
+    !editable.value ||
+    busy.value ||
+    editing.value ||
+    conflict.value ||
+    loading.value
+  )
+    return;
   await act(async () => {
-    await api(`/api/v1/agents/${props.code}/relations/${row.relation_code}`, {
-      method: "DELETE",
-    });
-    await refresh();
+    try {
+      await api(`/api/v1/agents/${props.code}/relations/${row.relation_code}`, {
+        method: "DELETE",
+        headers: { "If-Match": etag.value },
+      });
+      await refresh();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 412) conflict.value = true;
+      throw e;
+    }
   }, "协作关系已移除，重新发布主 Agent 后生效");
 }
 watch(
@@ -91,6 +133,7 @@ watch(
 onBeforeUnmount(() => {
   alive = false;
   requestNumber++;
+  controller?.abort();
 });
 </script>
 <template>
@@ -99,12 +142,17 @@ onBeforeUnmount(() => {
       <h2>子 Agent 协作</h2>
       <button
         class="secondary-button"
-        :disabled="busy || loading || !!editing"
-        @click="refresh"
+        :disabled="busy || loading || !!editing || conflict"
+        @click="refresh()"
       >
         刷新协作
       </button>
     </div>
+    <EditConflict
+      v-if="conflict"
+      :disabled="busy || loading"
+      @reload="refresh(true)"
+    />
     <p class="muted">
       调用方式、超时和关系启停在重新发布主 Agent
       后生效。历史版本和已提交任务保留原快照；子 Agent 必须启用且已有发布版本。
@@ -128,7 +176,10 @@ onBeforeUnmount(() => {
       @submit.prevent="save"
     >
       <h3>添加协作关系</h3>
-      <fieldset class="plain-fieldset form-fields" :disabled="busy || loading">
+      <fieldset
+        class="plain-fieldset form-fields"
+        :disabled="busy || loading || conflict"
+      >
         <label
           >子 Agent<select v-model="addition.sub_agent_code" required>
             <option value="">选择已发布的子 Agent</option>
@@ -185,13 +236,13 @@ onBeforeUnmount(() => {
         >
           <button
             class="secondary-button"
-            :disabled="busy || !!editing"
+            :disabled="busy || loading || conflict || !!editing"
             @click="start(row)"
           >
             编辑协作</button
           ><button
             class="secondary-button"
-            :disabled="busy || !!editing"
+            :disabled="busy || loading || conflict || !!editing"
             @click="remove(row)"
           >
             移除关系
@@ -219,7 +270,7 @@ onBeforeUnmount(() => {
       >
         <fieldset
           class="plain-fieldset form-fields"
-          :disabled="busy || !editable"
+          :disabled="busy || loading || conflict || !editable"
         >
           <label
             >调用方式<select v-model="settings.call_mode">

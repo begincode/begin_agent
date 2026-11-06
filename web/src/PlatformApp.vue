@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
-import ChatView from "./App.vue";
-import WorkspacePage from "./components/WorkspacePage.vue";
-import AgentEditor from "./components/AgentEditor.vue";
-import TaskWorkspace from "./components/TaskWorkspace.vue";
-import ResourceEditor from "./components/ResourceEditor.vue";
-import AdminView from "./components/AdminView.vue";
+import { asyncPage } from "./pageLoading";
+import { catalogKinds, readCatalog } from "./workspaceCatalog";
+const ChatView = asyncPage(() => import("./App.vue"));
+const WorkspacePage = asyncPage(() => import("./components/WorkspacePage.vue"));
+const AgentEditor = asyncPage(() => import("./components/AgentEditor.vue"));
+const TaskWorkspace = asyncPage(() => import("./components/TaskWorkspace.vue"));
+const ResourceEditor = asyncPage(
+  () => import("./components/ResourceEditor.vue"),
+);
+const AdminView = asyncPage(() => import("./components/AdminView.vue"));
 import { activeTenant, api, post, selectTenant } from "./api";
 import { workspaceKey, type Row } from "./workspace";
 import "./platform.css";
@@ -149,7 +153,18 @@ function route() {
     notice.value = "";
   }
 }
+let catalogGeneration = 0;
+let catalogController: AbortController | null = null;
+const catalogLoading = ref(false),
+  catalogError = ref(false);
+function invalidateCatalog() {
+  catalogGeneration++;
+  catalogController?.abort();
+  data.value = {};
+}
 function expired() {
+  invalidateCatalog();
+  catalogLoading.value = false;
   identity.value = null;
   data.value = {};
   needsLogin.value = true;
@@ -171,71 +186,53 @@ async function act(fn: () => Promise<void>, message = "", initialize = false) {
     busy.value = pendingActions > 0;
   }
 }
-async function catalog(kind: string, url: string) {
-  const first = await api<Row[]>(url);
-  if (
-    !["tools", "mcps", "skills", "resources", "agents"].includes(kind) ||
-    first.length < 50
-  )
-    return first;
-  const all = [...first];
-  const seen = new Set(
-    first.map(
-      (r) =>
-        r.tool_code ||
-        r.mcp_code ||
-        r.skill_code ||
-        r.resource_code ||
-        r.agent_code,
-    ),
-  );
-  let offset = first.length;
-  while (true) {
-    const page = await api<Row[]>(url + `?limit=100&offset=${offset}`);
-    if (!page.length) break;
-    const fresh = page.filter(
-      (r) =>
-        !seen.has(
-          r.tool_code ||
-            r.mcp_code ||
-            r.skill_code ||
-            r.resource_code ||
-            r.agent_code,
-        ),
-    );
-    if (!fresh.length) throw new Error("资源分页未前进，请重新加载");
-    for (const r of fresh) {
-      all.push(r);
-      seen.add(
-        r.tool_code ||
-          r.mcp_code ||
-          r.skill_code ||
-          r.resource_code ||
-          r.agent_code,
-      );
-    }
-    offset += page.length;
-    if (page.length < 100) break;
-  }
-  return all;
-}
 async function load() {
-  const requests: [string, string][] = [];
-  if (can("agents.read")) requests.push(["agents", "/api/v1/agents"]);
-  if (can("tasks.read")) requests.push(["tasks", "/api/v1/tasks"]);
-  if (can("resources.read"))
-    for (const kind of ["models", "tools", "mcps", "skills", "resources"])
-      requests.push([
-        kind,
-        "/api/v1/" + (kind === "models" ? "model-profiles" : kind),
-      ]);
-  const result = await Promise.all(
-    requests.map(
-      async ([kind, url]) => [kind, await catalog(kind, url)] as const,
-    ),
-  );
-  data.value = Object.fromEntries(result);
+  invalidateCatalog();
+  const generation = catalogGeneration,
+    tenant = activeTenant.value,
+    currentPath = path.value;
+  const controller = new AbortController();
+  catalogController = controller;
+  catalogError.value = false;
+  const kinds = identity.value && tenant ? catalogKinds(currentPath, can) : [];
+  catalogLoading.value = !!kinds.length;
+  if (!kinds.length) return;
+  try {
+    const result = await Promise.all(
+      kinds.map(
+        async (kind) =>
+          [
+            kind,
+            await readCatalog(
+              kind,
+              (url) => api<Row[]>(url, { signal: controller.signal }),
+              controller.signal,
+            ),
+          ] as const,
+      ),
+    );
+    if (
+      generation === catalogGeneration &&
+      tenant === activeTenant.value &&
+      currentPath === path.value &&
+      identity.value
+    )
+      data.value = Object.fromEntries(result);
+  } catch (e) {
+    const obsolete =
+      controller.signal.aborted || generation !== catalogGeneration;
+    controller.abort();
+    if (!obsolete) {
+      catalogError.value = true;
+      throw e;
+    }
+  } finally {
+    if (generation === catalogGeneration) catalogLoading.value = false;
+  }
 }
+watch(path, () => {
+  if (identity.value && !loading.value) void act(load, "", true);
+});
 async function boot() {
   loading.value = true;
   error.value = "";
@@ -281,11 +278,18 @@ async function authenticate() {
 }
 async function changeTenant(event: Event) {
   await act(async () => {
+    invalidateCatalog();
+    catalogLoading.value = true;
     selectTenant((event.target as HTMLSelectElement).value);
-    data.value = {};
-    identity.value = await api<Row>("/api/v1/me");
-    await load();
-    go("overview");
+    try {
+      identity.value = await api<Row>("/api/v1/me");
+      go("overview");
+      await load();
+    } catch (e) {
+      identity.value = null;
+      catalogLoading.value = false;
+      throw e;
+    }
   });
 }
 async function logout(all = false) {
@@ -310,6 +314,7 @@ onMounted(() => {
   void boot();
 });
 onBeforeUnmount(() => {
+  invalidateCatalog();
   window.removeEventListener("hashchange", route);
   window.removeEventListener("agent-auth-expired", expired);
 });
@@ -542,6 +547,22 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
+      <main
+        v-else-if="catalogLoading"
+        class="platform-main"
+        data-page-loading
+        role="status"
+      >
+        正在读取页面目录…
+      </main>
+      <main v-else-if="catalogError" class="platform-main">
+        <section class="workspace-panel">
+          <p>页面目录暂不可用，请重新读取。</p>
+          <button class="secondary-button" :disabled="busy" @click="act(load)">
+            重新读取目录
+          </button>
+        </section>
+      </main>
       <main v-else-if="section === 'account'" class="platform-main">
         <div class="page-heading">
           <div>

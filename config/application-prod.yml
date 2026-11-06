@@ -5,3 +5,12 @@ AGENT_LOG_LEVEL: INFO
 # 首次打开页面设置管理员；不使用 SSO 登记或 SSO 密钥。
 # 补齐 AGENT_DATABASE_URL、AGENT_WORKER_DATABASE_URL 和持久化加密主密钥。
 AGENT_MCP_ALLOWED_HOSTS: []
+# 私有文件对象目录继承 PMS_SHARED_DIR/data；多 API 实例须共享相同目录或 S3 桶。
+AGENT_ARTIFACT_STORAGE_BACKEND: local
+AGENT_ARTIFACT_MAX_FILE_BYTES: 20971520
+# AGENT_ARTIFACT_LOCAL_DIR: /absolute/persistent/objects
+# AGENT_ARTIFACT_STORAGE_BACKEND: s3
+# AGENT_ARTIFACT_S3_ENDPOINT: https://s3.example.com
+# AGENT_ARTIFACT_S3_BUCKET: begin-agent-private
+# AGENT_ARTIFACT_S3_REGION: us-east-1
+# 访问密钥仅在服务器侧注入；也可以使用 SDK 的受控运行身份。

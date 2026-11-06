@@ -78,9 +78,31 @@ async def client(db, tmp_path, monkeypatch):
 
 
 async def post(client, path, data, status=201):
-    response = await client.post("/api/v1" + path, json=data)
+    headers = await conditional_headers(client, "/api/v1" + path) if status != 403 else {}
+    response = await client.post("/api/v1" + path, json=data, headers=headers)
     assert response.status_code == status, response.text
     return response.json()
+
+
+async def conditional_headers(client, path, headers=None):
+    """Existing API scenarios read a fresh precondition; conflict tests pass explicit stale tags."""
+    parts = path.removeprefix("/api/v1/").split("/")
+    result = dict(headers or {})
+    if len(parts) < 2 or parts[0] != "agents":
+        return result
+    tail = parts[2] if len(parts) > 2 else ""
+    if tail not in {"", "versions", "rollback", "relations", "configuration"}:
+        return result
+    suffix = "/relations" if tail == "relations" else "/configuration" if tail else ""
+    response = await client.get("/api/v1/agents/" + parts[1] + suffix, headers=result)
+    if response.status_code == 200 and "etag" in response.headers:
+        result["If-Match"] = response.headers["etag"]
+    return result
+
+
+async def conditional(client, method, path, **kwargs):
+    kwargs["headers"] = await conditional_headers(client, path, kwargs.get("headers"))
+    return await client.request(method, path, **kwargs)
 
 
 async def configured_agent(client, name="助手", tools=None, execution=None):
@@ -337,7 +359,9 @@ async def test_subagent_tree_uses_published_child_versions(client, db, mode):
     assert sub["agent_version_code"] == cv["version_code"]
     assert sub["parent_run_code"] == root["run_code"] and sub["root_run_code"] == root["run_code"]
     assert sub["parent_step_code"] and sub["run_depth"] == 1
-    disabled = await client.patch(
+    disabled = await conditional(
+        client,
+        "PATCH",
         "/api/v1/agents/" + child["agent_code"],
         json={"agent_name": "子助手", "agent_type": "NORMAL", "status": 0},
     )
